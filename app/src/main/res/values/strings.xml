@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Breathe</string>
+    <string name="notification_title">Breathe is active</string>
+    <string name="notification_channel_name">Breathe Monitor</string>
+    <string name="onboarding_title">Welcome to Breathe</string>
+    <string name="onboarding_body">Breathe adds a mindful pause before you open distracting apps.</string>
+    <string name="grant_usage_access">Grant Usage Access</string>
+    <string name="granted">Granted ✓</string>
+    <string name="continue_btn">I\'ve granted access — continue</string>
+    <string name="add_app">Add app</string>
+    <string name="remove_app">Remove</string>
+    <string name="empty_state">Tap + to add apps you want to pause before opening.</string>
+    <string name="breathe_in">Breathe in…</string>
+    <string name="breathe_out">Breathe out…</string>
+    <string name="yes_open">Yes, open %s</string>
+    <string name="no_go_back">No, go back</string>
+    <string name="choose_apps">Choose apps to pause</string>
+</resources>
