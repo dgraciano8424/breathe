@@ -2,7 +2,9 @@ package com.dgraciano.breathe.ui.pause
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -18,23 +20,44 @@ class PauseActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Show over the lock screen — setShowWhenLocked replaces the deprecated manifest flag
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+
         val blockedPackage = intent.getStringExtra(EXTRA_PACKAGE) ?: ""
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: blockedPackage
 
-        viewModel.loadQuote()
+        viewModel.init(blockedPackage, appName)
 
         setContent {
             BreatheTheme {
                 val quote by viewModel.quote.collectAsState()
+                val attemptCount by viewModel.attemptCount.collectAsState()
+                val selectedReason by viewModel.selectedReason.collectAsState()
+
                 PauseScreen(
                     appName = appName,
+                    attemptCount = attemptCount,
                     quote = quote,
+                    selectedReason = selectedReason,
+                    onReasonSelected = viewModel::selectReason,
                     onYes = {
+                        viewModel.recordOpened()
                         packageManager.getLaunchIntentForPackage(blockedPackage)
                             ?.let { startActivity(it) }
                         finish()
                     },
                     onNo = {
+                        viewModel.recordDeclined()
                         startActivity(
                             Intent(Intent.ACTION_MAIN)
                                 .addCategory(Intent.CATEGORY_HOME)

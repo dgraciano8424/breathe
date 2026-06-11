@@ -17,11 +17,11 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): BreatheDatabase =
-        Room.databaseBuilder(ctx, BreatheDatabase::class.java, "breathe.db").build()
+        Room.databaseBuilder(ctx, BreatheDatabase::class.java, "breathe.db")
+            .addMigrations(BreatheDatabase.MIGRATION_1_2)
+            .build()
 
-    @Provides
-    fun provideBlockedAppDao(db: BreatheDatabase) = db.blockedAppDao()
-
-    @Provides
-    fun provideQuoteDao(db: BreatheDatabase) = db.quoteDao()
+    @Provides fun provideBlockedAppDao(db: BreatheDatabase) = db.blockedAppDao()
+    @Provides fun provideQuoteDao(db: BreatheDatabase) = db.quoteDao()
+    @Provides fun provideInterventionEventDao(db: BreatheDatabase) = db.interventionEventDao()
 }

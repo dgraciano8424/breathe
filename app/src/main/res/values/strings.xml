@@ -15,4 +15,12 @@
     <string name="yes_open">Yes, open %s</string>
     <string name="no_go_back">No, go back</string>
     <string name="choose_apps">Choose apps to pause</string>
+    <string name="why_opening">Why are you opening this?</string>
+    <string name="reason_bored">Bored</string>
+    <string name="reason_habit">Habit</string>
+    <string name="reason_escaping">Escaping</string>
+    <string name="reason_curious">Curious</string>
+    <string name="stats_title">Your Insights</string>
+    <string name="first_time_today">First time today</string>
+    <string name="nth_time_today">%d times today</string>
 </resources>

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Usage stats requires user to manually grant in Settings > Apps > Special App Access -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -33,8 +34,6 @@
         <activity
             android:name=".ui.pause.PauseActivity"
             android:exported="false"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
             android:theme="@style/Theme.Breathe" />
 
         <service

@@ -7,11 +7,13 @@ import androidx.navigation.compose.rememberNavController
 import com.dgraciano.breathe.ui.appselect.AppSelectScreen
 import com.dgraciano.breathe.ui.home.HomeScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingScreen
+import com.dgraciano.breathe.ui.stats.StatsScreen
 
 object Routes {
     const val ONBOARDING = "onboarding"
     const val HOME = "home"
     const val APP_SELECT = "app_select"
+    const val STATS = "stats"
 }
 
 @Composable
@@ -28,10 +30,16 @@ fun BreatheNavGraph() {
             )
         }
         composable(Routes.HOME) {
-            HomeScreen(onAddApp = { nav.navigate(Routes.APP_SELECT) })
+            HomeScreen(
+                onAddApp = { nav.navigate(Routes.APP_SELECT) },
+                onViewStats = { nav.navigate(Routes.STATS) }
+            )
         }
         composable(Routes.APP_SELECT) {
             AppSelectScreen(onDone = { nav.popBackStack() })
+        }
+        composable(Routes.STATS) {
+            StatsScreen(onBack = { nav.popBackStack() })
         }
     }
 }
