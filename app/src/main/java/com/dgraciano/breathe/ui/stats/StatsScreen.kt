@@ -17,8 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.dgraciano.breathe.data.model.AppStat
-import com.dgraciano.breathe.ui.theme.BreatheBackground
-import com.dgraciano.breathe.ui.theme.BreathePrimary
+import com.dgraciano.breathe.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,10 +32,16 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Your Insights") },
+                title = {
+                    Text("Your Insights", color = BreatheTextPrimary, fontWeight = FontWeight.SemiBold)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = BreatheTextSecondary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BreatheBackground)
@@ -59,7 +64,6 @@ fun StatsScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // ── Today ───────────────────────────────────────────────────
             SectionLabel("Today")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -75,17 +79,16 @@ fun StatsScreen(
                     modifier = Modifier.weight(1f),
                     value = "${state.todayDeclined}",
                     label = "Resisted",
-                    accent = Color(0xFF4CAF50)
+                    accent = BreatheSecondary
                 )
                 StatCard(
                     modifier = Modifier.weight(1f),
                     value = "${state.todayDeclined * 20}m",
                     label = "Saved",
-                    accent = Color(0xFFFF9800)
+                    accent = BreathePrimary.copy(alpha = 0.75f)
                 )
             }
 
-            // ── This week ───────────────────────────────────────────────
             SectionLabel("This Week")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -101,17 +104,15 @@ fun StatsScreen(
                     modifier = Modifier.weight(1f),
                     value = "${state.weeklyDeclined}",
                     label = "Times resisted",
-                    accent = Color(0xFF4CAF50)
+                    accent = BreatheSecondary
                 )
             }
 
-            // ── Top blocked apps ─────────────────────────────────────────
             if (state.topApps.isNotEmpty()) {
                 SectionLabel("Most Paused Apps")
                 TopAppsCard(apps = state.topApps)
             }
 
-            // ── Motivational footer ──────────────────────────────────────
             if (state.weeklyDeclined > 0) {
                 MotivationCard(declined = state.weeklyDeclined)
             }
@@ -125,7 +126,7 @@ private fun SectionLabel(text: String) {
         text = text.uppercase(),
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
-        color = Color(0xFF6C63FF),
+        color = BreathePrimary,
         letterSpacing = 1.5.sp
     )
 }
@@ -139,7 +140,7 @@ private fun StatCard(
 ) {
     Column(
         modifier = modifier
-            .background(Color(0xFF1E1E3A), RoundedCornerShape(16.dp))
+            .background(BreatheSurface, RoundedCornerShape(16.dp))
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -153,7 +154,7 @@ private fun StatCard(
         Text(
             text = label,
             fontSize = 11.sp,
-            color = Color(0xFF9090BB)
+            color = BreatheTextMuted
         )
     }
 }
@@ -165,7 +166,7 @@ private fun TopAppsCard(apps: List<AppStat>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1E1E3A), RoundedCornerShape(16.dp))
+            .background(BreatheSurface, RoundedCornerShape(16.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -175,22 +176,22 @@ private fun TopAppsCard(apps: List<AppStat>) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(app.appName, fontSize = 13.sp, color = Color(0xFFE0DEFF))
-                    Text("${app.count}×", fontSize = 13.sp, color = Color(0xFF9090BB))
+                    Text(app.appName, fontSize = 13.sp, color = BreatheTextPrimary)
+                    Text("${app.count}×", fontSize = 13.sp, color = BreatheTextMuted)
                 }
                 Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
-                        .background(Color(0xFF2A2A4A), RoundedCornerShape(3.dp))
+                        .background(BreatheDivider, RoundedCornerShape(3.dp))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(app.count / max)
                             .fillMaxHeight()
                             .background(
-                                Color(0xFF6C63FF).copy(alpha = 0.8f),
+                                BreathePrimary.copy(alpha = 0.8f),
                                 RoundedCornerShape(3.dp)
                             )
                     )
@@ -206,7 +207,7 @@ private fun MotivationCard(declined: Int) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1A2740), RoundedCornerShape(16.dp))
+            .background(BreatheSurfaceHigh, RoundedCornerShape(16.dp))
             .padding(20.dp)
     ) {
         Column {
@@ -214,13 +215,13 @@ private fun MotivationCard(declined: Int) {
                 text = "You've resisted $declined times this week.",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFF0EEFF)
+                color = BreatheTextPrimary
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "That's roughly $minutesSaved minutes back in your life.",
                 fontSize = 13.sp,
-                color = Color(0xFF9090BB)
+                color = BreatheTextSecondary
             )
         }
     }

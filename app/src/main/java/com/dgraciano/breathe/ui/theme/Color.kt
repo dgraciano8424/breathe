@@ -2,15 +2,20 @@ package com.dgraciano.breathe.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// ── Breathe teal/emerald palette ─────────────────────────────────────────────
+val BreatheBackground   = Color(0xFF0F2027)
+val BreatheSurface      = Color(0xFF1A3A4A)
+val BreatheSurfaceHigh  = Color(0xFF203A43)
+val BreatheDivider      = Color(0xFF2C4A56)
 
-val Purple40 = Color(0xFF6650A4)
-val PurpleGrey40 = Color(0xFF625B71)
-val Pink40 = Color(0xFF7D5260)
+val BreathePrimary      = Color(0xFF38F9D7)   // cyan-teal accent
+val BreatheSecondary    = Color(0xFF43E97B)   // emerald accent
+val BreatheOnPrimary    = Color(0xFF0F2027)   // text on primary buttons
 
-val BreatheBackground = Color(0xFF1A1A2E)
-val BreathePrimary = Color(0xFF6C63FF)
-val BreatheCircleOuter = Color(0x4D6C63FF)
-val BreatheCircleInner = Color(0x996C63FF)
+val BreatheTextPrimary   = Color(0xFFD4F5EC)
+val BreatheTextSecondary = Color(0xFFA8E6CF)
+val BreatheTextMuted     = Color(0xFF6EA89A)
+
+val BreatheRingOuter = Color(0x1A38F9D7)
+val BreatheRingMid   = Color(0x3338F9D7)
+val BreatheRingInner = Color(0x8038F9D7)

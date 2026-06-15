@@ -5,9 +5,14 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
-    primary = BreathePrimary,
-    background = BreatheBackground,
-    surface = BreatheBackground,
+    primary          = BreathePrimary,
+    onPrimary        = BreatheOnPrimary,
+    secondary        = BreatheSecondary,
+    background       = BreatheBackground,
+    surface          = BreatheSurface,
+    onBackground     = BreatheTextPrimary,
+    onSurface        = BreatheTextPrimary,
+    outline          = BreatheDivider,
 )
 
 @Composable

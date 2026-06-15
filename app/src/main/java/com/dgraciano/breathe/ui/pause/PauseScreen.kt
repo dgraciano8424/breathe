@@ -15,27 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
+import com.dgraciano.breathe.ui.theme.*
 import kotlinx.coroutines.delay
-
-private val BgTop = Color(0xFF0D0D1A)
-private val BgBottom = Color(0xFF1A1633)
-private val GlowPrimary = Color(0xFF6C63FF)
-private val GlowSecondary = Color(0xFF9C94FF)
-private val RingOuter = Color(0x1A6C63FF)
-private val RingMid = Color(0x336C63FF)
-private val RingInner = Color(0x806C63FF)
-private val RingCore = Color(0xCC6C63FF)
-private val TextPrimary = Color(0xFFF0EEFF)
-private val TextSecondary = Color(0x99C4BFFF)
-private val ChipSelected = Color(0x336C63FF)
-private val ChipBorder = Color(0x806C63FF)
 
 private val reasons = listOf(
     InterventionEvent.REASON_BORED to "Bored",
@@ -108,7 +95,7 @@ fun PauseScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(BgTop, BgBottom)))
+            .background(Brush.verticalGradient(listOf(BreatheBackground, BreatheSurface)))
     ) {
         Column(
             modifier = Modifier
@@ -117,14 +104,13 @@ fun PauseScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // ── Top: attempt counter ──────────────────────────────────────
             AnimatedVisibility(visible = showContent, enter = fadeIn(tween(600))) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = appName,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        color = TextSecondary,
+                        color = BreatheTextMuted,
                         letterSpacing = 2.sp
                     )
                     Spacer(Modifier.height(4.dp))
@@ -132,45 +118,40 @@ fun PauseScreen(
                         text = attemptCountLabel(attemptCount),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
+                        color = BreatheTextPrimary,
                         textAlign = TextAlign.Center
                     )
                 }
             }
 
-            // ── Center: breathing circles + label ────────────────────────
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.size(240.dp)) {
-                    // Outermost glow ring
                     Box(
                         modifier = Modifier
                             .size(220.dp)
                             .scale(breathScale)
-                            .background(RingOuter, CircleShape)
+                            .background(BreatheRingOuter, CircleShape)
                     )
-                    // Mid ring
                     Box(
                         modifier = Modifier
                             .size(170.dp)
                             .scale(midScale)
-                            .background(RingMid, CircleShape)
+                            .background(BreatheRingMid, CircleShape)
                     )
-                    // Inner ring
                     Box(
                         modifier = Modifier
                             .size(120.dp)
                             .scale(coreScale)
-                            .background(RingInner, CircleShape)
+                            .background(BreatheRingInner, CircleShape)
                     )
-                    // Core glow
                     Box(
                         modifier = Modifier
                             .size(75.dp)
                             .background(
                                 Brush.radialGradient(
                                     listOf(
-                                        GlowSecondary.copy(alpha = breathAlpha),
-                                        GlowPrimary.copy(alpha = breathAlpha * 0.7f)
+                                        BreatheSecondary.copy(alpha = breathAlpha),
+                                        BreathePrimary.copy(alpha = breathAlpha * 0.7f)
                                     )
                                 ),
                                 CircleShape
@@ -181,26 +162,25 @@ fun PauseScreen(
                 Text(
                     text = breathLabel,
                     fontSize = 14.sp,
-                    color = TextSecondary,
+                    color = BreatheTextSecondary,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 0.5.sp
                 )
             }
 
-            // ── Quote ─────────────────────────────────────────────────────
             AnimatedVisibility(visible = showContent && quote != null, enter = fadeIn(tween(800))) {
                 quote?.let {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0x1AFFFFFF), RoundedCornerShape(16.dp))
+                            .background(BreatheSurface, RoundedCornerShape(16.dp))
                             .padding(20.dp)
                     ) {
                         Text(
                             text = "“${it.text}”",
                             fontSize = 15.sp,
-                            color = TextPrimary,
+                            color = BreatheTextPrimary,
                             textAlign = TextAlign.Center,
                             lineHeight = 22.sp
                         )
@@ -208,19 +188,18 @@ fun PauseScreen(
                         Text(
                             text = "— ${it.author}",
                             fontSize = 12.sp,
-                            color = TextSecondary
+                            color = BreatheTextSecondary
                         )
                     }
                 }
             }
 
-            // ── Reason chips ──────────────────────────────────────────────
             AnimatedVisibility(visible = showContent, enter = fadeIn(tween(1000))) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "Why are you opening this?",
                         fontSize = 13.sp,
-                        color = TextSecondary,
+                        color = BreatheTextSecondary,
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
                     Row(
@@ -235,12 +214,12 @@ fun PauseScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .background(
-                                        if (isSelected) ChipSelected else Color.Transparent,
+                                        if (isSelected) BreathePrimary.copy(alpha = 0.2f) else androidx.compose.ui.graphics.Color.Transparent,
                                         RoundedCornerShape(20.dp)
                                     )
                                     .border(
                                         1.dp,
-                                        if (isSelected) GlowPrimary else ChipBorder,
+                                        if (isSelected) BreathePrimary else BreathePrimary.copy(alpha = 0.5f),
                                         RoundedCornerShape(20.dp)
                                     )
                                     .clickable { onReasonSelected(key) }
@@ -249,7 +228,7 @@ fun PauseScreen(
                                 Text(
                                     text = label,
                                     fontSize = 12.sp,
-                                    color = if (isSelected) GlowSecondary else TextSecondary,
+                                    color = if (isSelected) BreatheSecondary else BreatheTextSecondary,
                                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                 )
                             }
@@ -258,7 +237,6 @@ fun PauseScreen(
                 }
             }
 
-            // ── Action buttons ────────────────────────────────────────────
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -269,13 +247,15 @@ fun PauseScreen(
                         .fillMaxWidth()
                         .height(52.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = GlowPrimary)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BreathePrimary,
+                        contentColor = BreatheOnPrimary
+                    )
                 ) {
                     Text(
                         "No, go back",
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
                 OutlinedButton(
@@ -284,12 +264,12 @@ fun PauseScreen(
                         .fillMaxWidth()
                         .height(52.dp),
                     shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x40FFFFFF))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BreatheDivider)
                 ) {
                     Text(
                         "Yes, open $appName",
                         fontSize = 14.sp,
-                        color = TextSecondary
+                        color = BreatheTextSecondary
                     )
                 }
             }

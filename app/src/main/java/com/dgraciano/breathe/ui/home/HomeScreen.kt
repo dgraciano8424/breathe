@@ -13,15 +13,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.dgraciano.breathe.data.model.BlockedApp
-import com.dgraciano.breathe.ui.theme.BreatheBackground
-import com.dgraciano.breathe.ui.theme.BreathePrimary
+import com.dgraciano.breathe.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,11 +42,20 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Breathe", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Breathe",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = BreatheTextPrimary
+                    )
                 },
                 actions = {
                     IconButton(onClick = onViewStats) {
-                        Icon(Icons.Outlined.BarChart, contentDescription = "Stats")
+                        Icon(
+                            Icons.Outlined.BarChart,
+                            contentDescription = "Stats",
+                            tint = BreatheTextSecondary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BreatheBackground)
@@ -56,9 +64,11 @@ fun HomeScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddApp,
-                containerColor = BreathePrimary
+                containerColor = BreathePrimary,
+                contentColor = BreatheOnPrimary,
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add app", tint = Color.White)
+                Icon(Icons.Default.Add, contentDescription = "Add app")
             }
         },
         containerColor = BreatheBackground
@@ -68,13 +78,12 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // ── Today summary card ──────────────────────────────────────
             item {
                 if (todayAttempts > 0 || todayDeclined > 0) {
                     TodaySummaryCard(
                         attempts = todayAttempts,
                         declined = todayDeclined,
-                        modifier = Modifier.padding(16.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                     )
                 }
             }
@@ -88,17 +97,41 @@ fun HomeScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .background(
+                                        Brush.radialGradient(
+                                            listOf(
+                                                BreathePrimary.copy(alpha = 0.2f),
+                                                BreatheSecondary.copy(alpha = 0.05f)
+                                            )
+                                        ),
+                                        RoundedCornerShape(32.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = BreathePrimary.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(16.dp))
                             Text(
                                 text = "No apps monitored yet",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color(0xFFE0DEFF)
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = BreatheTextPrimary
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(6.dp))
                             Text(
-                                text = "Tap + to add apps you want to pause before opening.",
+                                text = "Tap + to add apps you want\na mindful pause before opening.",
                                 textAlign = TextAlign.Center,
-                                color = Color(0xFF9090BB),
-                                fontSize = 14.sp
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                color = BreatheTextSecondary
                             )
                         }
                     }
@@ -111,7 +144,7 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold,
                         color = BreathePrimary,
                         letterSpacing = 1.5.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                     )
                 }
                 items(apps, key = { it.packageName }) { app ->
@@ -127,23 +160,27 @@ private fun TodaySummaryCard(attempts: Int, declined: Int, modifier: Modifier = 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFF1E1E3A), RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceAround
+            .background(
+                Brush.horizontalGradient(listOf(BreatheSurface, BreatheSurfaceHigh)),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(vertical = 18.dp, horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         SummaryItem(value = "$attempts", label = "Pauses today")
         Box(
             modifier = Modifier
                 .width(1.dp)
-                .height(40.dp)
-                .background(Color(0xFF2A2A4A))
+                .height(36.dp)
+                .background(BreatheDivider)
         )
         SummaryItem(value = "$declined", label = "Resisted")
         Box(
             modifier = Modifier
                 .width(1.dp)
-                .height(40.dp)
-                .background(Color(0xFF2A2A4A))
+                .height(36.dp)
+                .background(BreatheDivider)
         )
         SummaryItem(value = "${declined * 20}m", label = "Saved")
     }
@@ -152,8 +189,9 @@ private fun TodaySummaryCard(attempts: Int, declined: Int, modifier: Modifier = 
 @Composable
 private fun SummaryItem(value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = BreathePrimary)
-        Text(label, fontSize = 11.sp, color = Color(0xFF9090BB))
+        Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BreathePrimary)
+        Spacer(Modifier.height(2.dp))
+        Text(label, fontSize = 11.sp, color = BreatheTextMuted)
     }
 }
 
@@ -161,21 +199,25 @@ private fun SummaryItem(value: String, label: String) {
 private fun BlockedAppRow(app: BlockedApp, onRemove: () -> Unit) {
     ListItem(
         headlineContent = {
-            Text(app.appName, color = Color(0xFFE0DEFF))
+            Text(app.appName, color = BreatheTextPrimary, fontSize = 15.sp)
         },
         supportingContent = {
             Text(
                 app.packageName,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF9090BB)
+                color = BreatheTextMuted
             )
         },
         trailingContent = {
             IconButton(onClick = onRemove) {
-                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color(0xFF9090BB))
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Remove",
+                    tint = BreatheTextMuted
+                )
             }
         },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
     )
-    HorizontalDivider(color = Color(0xFF2A2A4A))
+    HorizontalDivider(color = BreatheDivider, thickness = 0.5.dp)
 }
