@@ -10,7 +10,8 @@ data class InterventionEvent(
     val appName: String,
     val timestamp: Long = System.currentTimeMillis(),
     val outcome: String,
-    val reason: String? = null
+    val reason: String? = null,
+    val minutesSaved: Int = 0
 ) {
     companion object {
         const val OUTCOME_DECLINED = "DECLINED"

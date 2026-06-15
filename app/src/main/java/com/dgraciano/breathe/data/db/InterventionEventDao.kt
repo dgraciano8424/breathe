@@ -32,4 +32,10 @@ interface InterventionEventDao {
 
     @Query("SELECT * FROM intervention_events ORDER BY timestamp DESC LIMIT 100")
     fun getRecent(): Flow<List<InterventionEvent>>
+
+    @Query("SELECT COALESCE(SUM(minutesSaved), 0) FROM intervention_events WHERE outcome = 'DECLINED'")
+    suspend fun getTotalMinutesSaved(): Long
+
+    @Query("SELECT COUNT(*) FROM intervention_events WHERE outcome = 'DECLINED'")
+    suspend fun getLifetimeDeclined(): Long
 }

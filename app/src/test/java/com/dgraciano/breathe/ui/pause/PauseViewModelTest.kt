@@ -4,8 +4,10 @@ import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.service.SessionTimeHelper
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,7 @@ class PauseViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var quoteRepo: QuoteRepository
     private lateinit var statsRepo: StatsRepository
+    private lateinit var sessionTimeHelper: SessionTimeHelper
     private lateinit var viewModel: PauseViewModel
 
     @Before
@@ -33,7 +36,8 @@ class PauseViewModelTest {
         Dispatchers.setMain(testDispatcher)
         quoteRepo = mockk()
         statsRepo = mockk()
-        viewModel = PauseViewModel(quoteRepo, statsRepo)
+        sessionTimeHelper = mockk { every { getAvgSessionMinutes(any()) } returns 20 }
+        viewModel = PauseViewModel(quoteRepo, statsRepo, sessionTimeHelper)
     }
 
     @After

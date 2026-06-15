@@ -4,16 +4,18 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.dgraciano.breathe.ui.achievements.AchievementsScreen
 import com.dgraciano.breathe.ui.appselect.AppSelectScreen
 import com.dgraciano.breathe.ui.home.HomeScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingScreen
 import com.dgraciano.breathe.ui.stats.StatsScreen
 
 object Routes {
-    const val ONBOARDING = "onboarding"
-    const val HOME = "home"
-    const val APP_SELECT = "app_select"
-    const val STATS = "stats"
+    const val ONBOARDING   = "onboarding"
+    const val HOME         = "home"
+    const val APP_SELECT   = "app_select"
+    const val STATS        = "stats"
+    const val ACHIEVEMENTS = "achievements"
 }
 
 @Composable
@@ -31,8 +33,9 @@ fun BreatheNavGraph() {
         }
         composable(Routes.HOME) {
             HomeScreen(
-                onAddApp = { nav.navigate(Routes.APP_SELECT) },
-                onViewStats = { nav.navigate(Routes.STATS) }
+                onAddApp       = { nav.navigate(Routes.APP_SELECT) },
+                onViewStats    = { nav.navigate(Routes.STATS) },
+                onAchievements = { nav.navigate(Routes.ACHIEVEMENTS) }
             )
         }
         composable(Routes.APP_SELECT) {
@@ -40,6 +43,9 @@ fun BreatheNavGraph() {
         }
         composable(Routes.STATS) {
             StatsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.ACHIEVEMENTS) {
+            AchievementsScreen(onBack = { nav.popBackStack() })
         }
     }
 }

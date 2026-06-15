@@ -10,7 +10,7 @@ import com.dgraciano.breathe.data.model.Quote
 
 @Database(
     entities = [BlockedApp::class, Quote::class, InterventionEvent::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class BreatheDatabase : RoomDatabase() {
@@ -31,6 +31,14 @@ abstract class BreatheDatabase : RoomDatabase() {
                         reason TEXT
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE intervention_events ADD COLUMN minutesSaved INTEGER NOT NULL DEFAULT 0"
+                )
             }
         }
     }

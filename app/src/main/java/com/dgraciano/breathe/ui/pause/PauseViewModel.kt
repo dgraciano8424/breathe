@@ -6,6 +6,7 @@ import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.service.SessionTimeHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +16,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PauseViewModel @Inject constructor(
     private val quoteRepo: QuoteRepository,
-    private val statsRepo: StatsRepository
+    private val statsRepo: StatsRepository,
+    private val sessionTimeHelper: SessionTimeHelper
 ) : ViewModel() {
 
     private val _quote = MutableStateFlow<Quote?>(null)
@@ -35,7 +37,6 @@ class PauseViewModel @Inject constructor(
         currentAppName = appName
         viewModelScope.launch {
             _quote.value = quoteRepo.getRandomQuote()
-            // +1 to count the current attempt (recorded on Yes/No tap)
             _attemptCount.value = statsRepo.getTodayAttemptCount(packageName) + 1
         }
     }
@@ -46,12 +47,14 @@ class PauseViewModel @Inject constructor(
 
     fun recordDeclined() {
         viewModelScope.launch {
+            val minutesSaved = sessionTimeHelper.getAvgSessionMinutes(currentPackage)
             statsRepo.recordEvent(
                 InterventionEvent(
-                    packageName = currentPackage,
-                    appName = currentAppName,
-                    outcome = InterventionEvent.OUTCOME_DECLINED,
-                    reason = _selectedReason.value
+                    packageName  = currentPackage,
+                    appName      = currentAppName,
+                    outcome      = InterventionEvent.OUTCOME_DECLINED,
+                    reason       = _selectedReason.value,
+                    minutesSaved = minutesSaved
                 )
             )
         }
@@ -62,9 +65,9 @@ class PauseViewModel @Inject constructor(
             statsRepo.recordEvent(
                 InterventionEvent(
                     packageName = currentPackage,
-                    appName = currentAppName,
-                    outcome = InterventionEvent.OUTCOME_OPENED,
-                    reason = _selectedReason.value
+                    appName     = currentAppName,
+                    outcome     = InterventionEvent.OUTCOME_OPENED,
+                    reason      = _selectedReason.value
                 )
             )
         }

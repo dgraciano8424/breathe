@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +28,7 @@ import com.dgraciano.breathe.ui.theme.*
 fun HomeScreen(
     onAddApp: () -> Unit,
     onViewStats: () -> Unit,
+    onAchievements: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val apps by viewModel.blockedApps.collectAsState()
@@ -50,6 +52,13 @@ fun HomeScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = onAchievements) {
+                        Icon(
+                            Icons.Outlined.EmojiEvents,
+                            contentDescription = "Achievements",
+                            tint = BreatheTextSecondary
+                        )
+                    }
                     IconButton(onClick = onViewStats) {
                         Icon(
                             Icons.Outlined.BarChart,
