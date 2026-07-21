@@ -4,9 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
+import com.dgraciano.breathe.data.repository.MentalHealthTip
+import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
-import com.dgraciano.breathe.service.SessionTimeHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,7 +18,7 @@ import javax.inject.Inject
 class PauseViewModel @Inject constructor(
     private val quoteRepo: QuoteRepository,
     private val statsRepo: StatsRepository,
-    private val sessionTimeHelper: SessionTimeHelper
+    private val tipsRepo: MentalHealthTipsRepository
 ) : ViewModel() {
 
     private val _quote = MutableStateFlow<Quote?>(null)
@@ -28,9 +29,15 @@ class PauseViewModel @Inject constructor(
 
     private val _selectedReason = MutableStateFlow<String?>(null)
     val selectedReason: StateFlow<String?> = _selectedReason
+    
+    private val _tip = MutableStateFlow(tipsRepo.getRandomTip())
+    val tip: StateFlow<MentalHealthTip> = _tip
+    
+    private val _alternativeActivity = MutableStateFlow(tipsRepo.getRandomActivity())
+    val alternativeActivity: StateFlow<String> = _alternativeActivity
 
-    private var currentPackage = ""
-    private var currentAppName = ""
+    var currentPackage: String = ""
+    var currentAppName: String = ""
 
     fun init(packageName: String, appName: String) {
         currentPackage = packageName
@@ -42,19 +49,17 @@ class PauseViewModel @Inject constructor(
     }
 
     fun selectReason(reason: String) {
-        _selectedReason.value = if (_selectedReason.value == reason) null else reason
+        _selectedReason.value = reason
     }
 
     fun recordDeclined() {
         viewModelScope.launch {
-            val minutesSaved = sessionTimeHelper.getAvgSessionMinutes(currentPackage)
             statsRepo.recordEvent(
                 InterventionEvent(
-                    packageName  = currentPackage,
-                    appName      = currentAppName,
-                    outcome      = InterventionEvent.OUTCOME_DECLINED,
-                    reason       = _selectedReason.value,
-                    minutesSaved = minutesSaved
+                    packageName = currentPackage,
+                    appName = currentAppName,
+                    outcome = InterventionEvent.OUTCOME_DECLINED,
+                    reason = _selectedReason.value ?: InterventionEvent.REASON_HABIT
                 )
             )
         }
@@ -65,9 +70,9 @@ class PauseViewModel @Inject constructor(
             statsRepo.recordEvent(
                 InterventionEvent(
                     packageName = currentPackage,
-                    appName     = currentAppName,
-                    outcome     = InterventionEvent.OUTCOME_OPENED,
-                    reason      = _selectedReason.value
+                    appName = currentAppName,
+                    outcome = InterventionEvent.OUTCOME_OPENED,
+                    reason = _selectedReason.value ?: InterventionEvent.REASON_HABIT
                 )
             )
         }

@@ -21,7 +21,7 @@ class PauseActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Show over the lock screen — setShowWhenLocked replaces the deprecated manifest flag
+        // Show over the lock screen
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -43,18 +43,20 @@ class PauseActivity : ComponentActivity() {
                 val quote by viewModel.quote.collectAsState()
                 val attemptCount by viewModel.attemptCount.collectAsState()
                 val selectedReason by viewModel.selectedReason.collectAsState()
+                val tip by viewModel.tip.collectAsState()
+                val activity by viewModel.alternativeActivity.collectAsState()
 
                 PauseScreen(
                     appName = appName,
                     attemptCount = attemptCount,
                     quote = quote,
+                    tip = tip,
+                    alternativeActivity = activity,
                     selectedReason = selectedReason,
                     onReasonSelected = viewModel::selectReason,
                     onYes = {
                         viewModel.recordOpened()
-                        packageManager.getLaunchIntentForPackage(blockedPackage)
-                            ?.let { startActivity(it) }
-                        finish()
+                        finish() // Just finish to let them go to the app they were opening
                     },
                     onNo = {
                         viewModel.recordDeclined()

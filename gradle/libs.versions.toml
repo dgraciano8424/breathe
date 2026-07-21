@@ -1,6 +1,6 @@
 [versions]
-agp = "8.4.0"
-kotlin = "1.9.24"
+agp = "9.2.1"
+kotlin = "2.2.10"
 composeBom = "2024.06.00"
 hilt = "2.51.1"
 room = "2.6.1"
@@ -9,7 +9,7 @@ okhttp = "4.12.0"
 work = "2.9.0"
 navigation = "2.7.7"
 coroutines = "1.8.1"
-ksp = "1.9.24-1.0.20"
+ksp = "2.3.2"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -40,3 +40,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

@@ -15,12 +15,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.dgraciano.breathe.data.model.BlockedApp
+import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,124 +42,128 @@ fun HomeScreen(
         viewModel.refreshStats()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Breathe",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = BreatheTextPrimary
-                    )
-                },
-                actions = {
-                    IconButton(onClick = onAchievements) {
-                        Icon(
-                            Icons.Outlined.EmojiEvents,
-                            contentDescription = "Achievements",
-                            tint = BreatheTextSecondary
-                        )
-                    }
-                    IconButton(onClick = onViewStats) {
-                        Icon(
-                            Icons.Outlined.BarChart,
-                            contentDescription = "Stats",
-                            tint = BreatheTextSecondary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BreatheBackground)
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddApp,
-                containerColor = BreathePrimary,
-                contentColor = BreatheOnPrimary,
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add app")
-            }
-        },
-        containerColor = BreatheBackground
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            item {
-                if (todayAttempts > 0 || todayDeclined > 0) {
-                    TodaySummaryCard(
-                        attempts = todayAttempts,
-                        declined = todayDeclined,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
-                }
-            }
+    Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
+        WaveBackground(modifier = Modifier.fillMaxSize())
 
-            if (apps.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillParentMaxSize()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .background(
-                                        Brush.radialGradient(
-                                            listOf(
-                                                BreathePrimary.copy(alpha = 0.2f),
-                                                BreatheSecondary.copy(alpha = 0.05f)
-                                            )
-                                        ),
-                                        RoundedCornerShape(32.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = null,
-                                    tint = BreathePrimary.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                text = "No apps monitored yet",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp,
-                                color = BreatheTextPrimary
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = "Tap + to add apps you want\na mindful pause before opening.",
-                                textAlign = TextAlign.Center,
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                color = BreatheTextSecondary
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "Breathe",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = BreatheTextPrimary
+                        )
+                    },
+                    actions = {
+                        IconButton(onClick = onAchievements) {
+                            Icon(
+                                Icons.Outlined.EmojiEvents,
+                                contentDescription = "Achievements",
+                                tint = BreatheTextSecondary
                             )
                         }
+                        IconButton(onClick = onViewStats) {
+                            Icon(
+                                Icons.Outlined.BarChart,
+                                contentDescription = "Stats",
+                                tint = BreatheTextSecondary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = onAddApp,
+                    containerColor = BreathePrimary,
+                    contentColor = BreatheOnPrimary,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add app")
+                }
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                item {
+                    if (todayAttempts > 0 || todayDeclined > 0) {
+                        TodaySummaryCard(
+                            attempts = todayAttempts,
+                            declined = todayDeclined,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
                     }
                 }
-            } else {
-                item {
-                    Text(
-                        text = "MONITORED APPS",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = BreathePrimary,
-                        letterSpacing = 1.5.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                    )
-                }
-                items(apps, key = { it.packageName }) { app ->
-                    BlockedAppRow(app = app, onRemove = { viewModel.removeApp(app) })
+
+                if (apps.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillParentMaxSize()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .background(
+                                            Brush.radialGradient(
+                                                listOf(
+                                                    BreathePrimary.copy(alpha = 0.2f),
+                                                    BreatheSecondary.copy(alpha = 0.05f)
+                                                )
+                                            ),
+                                            RoundedCornerShape(32.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = BreathePrimary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    text = "No apps monitored yet",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp,
+                                    color = BreatheTextPrimary
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "Tap + to add apps you want\na mindful pause before opening.",
+                                    textAlign = TextAlign.Center,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    color = BreatheTextSecondary
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    item {
+                        Text(
+                            text = "MONITORED APPS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BreathePrimary,
+                            letterSpacing = 1.5.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
+                    items(apps, key = { it.packageName }) { app ->
+                        BlockedAppRow(app = app, onRemove = { viewModel.removeApp(app) })
+                    }
                 }
             }
         }
@@ -226,7 +232,7 @@ private fun BlockedAppRow(app: BlockedApp, onRemove: () -> Unit) {
                 )
             }
         },
-        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
     HorizontalDivider(color = BreatheDivider, thickness = 0.5.dp)
 }

@@ -2,6 +2,7 @@ package com.dgraciano.breathe.ui.onboarding
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -11,15 +12,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
-import androidx.compose.animation.core.*
 
 @Composable
 fun OnboardingScreen(
@@ -41,11 +41,9 @@ fun OnboardingScreen(
         ), label = "pulse"
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(BreatheBackground, BreatheSurface)))
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
+        WaveBackground(modifier = Modifier.fillMaxSize())
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -71,7 +69,9 @@ fun OnboardingScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            Brush.radialGradient(listOf(BreathePrimary.copy(alpha = 0.9f), BreatheSecondary.copy(alpha = 0.6f))),
+                            androidx.compose.ui.graphics.Brush.radialGradient(
+                                listOf(BreathePrimary.copy(alpha = 0.9f), BreatheSecondary.copy(alpha = 0.6f))
+                            ),
                             CircleShape
                         )
                 )
@@ -81,77 +81,85 @@ fun OnboardingScreen(
 
             Text(
                 text = "Breathe",
-                fontSize = 36.sp,
+                fontSize = 42.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheTextPrimary,
                 letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "A mindful pause before you open\ndistracting apps.",
+                text = "Welcome to your digital sanctuary.\nA mindful pause for a better life.",
                 textAlign = TextAlign.Center,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
                 color = BreatheTextSecondary
             )
 
             Spacer(modifier = Modifier.height(48.dp))
 
             // Permission card
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(BreatheSurface, RoundedCornerShape(16.dp))
-                    .padding(20.dp)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = BreatheSurface.copy(alpha = 0.7f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BreatheDivider)
             ) {
-                Text(
-                    "Usage Access",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    color = BreatheTextPrimary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "Lets Breathe see which app you just opened — required to show the pause screen.",
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                    color = BreatheTextSecondary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
-                    enabled = !hasUsage,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BreathePrimary,
-                        contentColor = BreatheOnPrimary,
-                        disabledContainerColor = BreatheSecondary.copy(alpha = 0.3f),
-                        disabledContentColor = BreatheTextSecondary
-                    )
-                ) {
+                Column(modifier = Modifier.padding(24.dp)) {
                     Text(
-                        if (hasUsage) "Granted ✓" else "Grant Access",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
+                        "Digital Awareness",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = BreathePrimary
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Breathe needs 'Usage Access' to notice when you open distracting apps and help you pause.",
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = BreatheTextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Button(
+                        onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+                        enabled = !hasUsage,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BreathePrimary,
+                            contentColor = BreatheOnPrimary,
+                            disabledContainerColor = BreatheSecondary.copy(alpha = 0.3f),
+                            disabledContentColor = BreatheTextSecondary
+                        )
+                    ) {
+                        Text(
+                            if (hasUsage) "Access Granted ✓" else "Grant Usage Access",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            Button(
-                onClick = { viewModel.refreshPermissionState() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = BreathePrimary,
-                    contentColor = BreatheOnPrimary
+            if (hasUsage) {
+                Button(
+                    onClick = { viewModel.refreshPermissionState() },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BreatheSecondary,
+                        contentColor = BreatheOnPrimary
+                    )
+                ) {
+                    Text("Enter the Sanctuary", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            } else {
+                Text(
+                    "Tap above to begin your journey",
+                    fontSize = 12.sp,
+                    color = BreatheTextMuted
                 )
-            ) {
-                Text("I've granted access — continue", fontWeight = FontWeight.SemiBold)
             }
         }
     }
