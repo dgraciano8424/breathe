@@ -13,11 +13,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
 
@@ -28,9 +31,27 @@ fun OnboardingScreen(
 ) {
     val context = LocalContext.current
     val hasUsage by viewModel.hasUsagePermission.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(Unit) { viewModel.refreshPermissionState() }
-    LaunchedEffect(hasUsage) { if (hasUsage) onPermissionsGranted() }
+    // Observe lifecycle to refresh permission state when returning from settings
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPermissionState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(hasUsage) {
+        if (hasUsage) {
+            // Give a small delay for the user to see the "Granted" state before auto-advancing
+            onPermissionsGranted()
+        }
+    }
 
     val transition = rememberInfiniteTransition(label = "onboard")
     val pulse by transition.animateFloat(
@@ -120,7 +141,10 @@ fun OnboardingScreen(
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                     Button(
-                        onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+                        onClick = {
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            context.startActivity(intent)
+                        },
                         enabled = !hasUsage,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(26.dp),
@@ -144,7 +168,7 @@ fun OnboardingScreen(
 
             if (hasUsage) {
                 Button(
-                    onClick = { viewModel.refreshPermissionState() },
+                    onClick = { onPermissionsGranted() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
