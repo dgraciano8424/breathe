@@ -39,6 +39,16 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
 
     suspend fun getTopAppsThisWeek(): List<AppStat> = dao.getTopApps(startOfWeek())
 
+    suspend fun getFocusStreak(): Int {
+        val all = dao.getAllOrdered()
+        var streak = 0
+        for (event in all) {
+            if (event.outcome == "DECLINED") streak++
+            else break
+        }
+        return streak
+    }
+
     fun getRecentEvents(): Flow<List<InterventionEvent>> = dao.getRecent()
 
     suspend fun recordEvent(event: InterventionEvent) = dao.insert(event)

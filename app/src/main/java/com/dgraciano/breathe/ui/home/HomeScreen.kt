@@ -1,6 +1,7 @@
 package com.dgraciano.breathe.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,7 +39,6 @@ fun HomeScreen(
     val todayDeclined by viewModel.todayDeclined.collectAsState()
 
     LaunchedEffect(Unit) {
-        viewModel.startService()
         viewModel.refreshStats()
     }
 
@@ -110,7 +110,10 @@ fun HomeScreen(
                                 .padding(32.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable { onAddApp() }
+                            ) {
                                 Box(
                                     modifier = Modifier
                                         .size(64.dp)
@@ -141,7 +144,7 @@ fun HomeScreen(
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "Tap + to add apps you want\na mindful pause before opening.",
+                                    text = "Tap here to add apps you want\na mindful pause before opening.",
                                     textAlign = TextAlign.Center,
                                     fontSize = 14.sp,
                                     lineHeight = 20.sp,
@@ -161,8 +164,12 @@ fun HomeScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                         )
                     }
-                    items(apps, key = { it.packageName }) { app ->
-                        BlockedAppRow(app = app, onRemove = { viewModel.removeApp(app) })
+                    items(apps, key = { it.app.packageName }) { appWithStats ->
+                        BlockedAppRow(
+                            app = appWithStats.app,
+                            usageMinutes = appWithStats.usageMinutes,
+                            onRemove = { viewModel.removeApp(appWithStats.app) }
+                        )
                     }
                 }
             }
@@ -176,7 +183,7 @@ private fun TodaySummaryCard(attempts: Int, declined: Int, modifier: Modifier = 
         modifier = modifier
             .fillMaxWidth()
             .background(
-                Brush.horizontalGradient(listOf(BreatheSurface, BreatheSurfaceHigh)),
+                Brush.horizontalGradient(listOf(BreatheSurface.copy(alpha = 0.8f), BreatheSurfaceHigh.copy(alpha = 0.8f))),
                 RoundedCornerShape(16.dp)
             )
             .padding(vertical = 18.dp, horizontal = 8.dp),
@@ -211,16 +218,16 @@ private fun SummaryItem(value: String, label: String) {
 }
 
 @Composable
-private fun BlockedAppRow(app: BlockedApp, onRemove: () -> Unit) {
+private fun BlockedAppRow(app: BlockedApp, usageMinutes: Int, onRemove: () -> Unit) {
     ListItem(
         headlineContent = {
-            Text(app.appName, color = BreatheTextPrimary, fontSize = 15.sp)
+            Text(app.appName, color = BreatheTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         },
         supportingContent = {
             Text(
-                app.packageName,
+                text = formatUsage(usageMinutes),
                 style = MaterialTheme.typography.labelSmall,
-                color = BreatheTextMuted
+                color = if (usageMinutes > 60) Color(0xFFFF8A80) else BreatheTextSecondary
             )
         },
         trailingContent = {
@@ -234,5 +241,15 @@ private fun BlockedAppRow(app: BlockedApp, onRemove: () -> Unit) {
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
-    HorizontalDivider(color = BreatheDivider, thickness = 0.5.dp)
+    HorizontalDivider(color = BreatheDivider, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+private fun formatUsage(minutes: Int): String {
+    if (minutes == 0) return "Mindful today - no usage yet"
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h > 0 -> "$h h $m m spent this week"
+        else -> "$m m spent this week"
+    }
 }
