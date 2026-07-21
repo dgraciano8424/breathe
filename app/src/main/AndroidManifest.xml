@@ -34,7 +34,8 @@
         <activity
             android:name=".ui.pause.PauseActivity"
             android:exported="false"
-            android:theme="@style/Theme.Breathe" />
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Breathe.Transparent" />
 
         <service
             android:name=".service.AppMonitorService"

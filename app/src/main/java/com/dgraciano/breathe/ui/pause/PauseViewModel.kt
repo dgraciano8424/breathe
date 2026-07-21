@@ -8,6 +8,7 @@ import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.service.SessionTimeHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,8 @@ import javax.inject.Inject
 class PauseViewModel @Inject constructor(
     private val quoteRepo: QuoteRepository,
     private val statsRepo: StatsRepository,
-    private val tipsRepo: MentalHealthTipsRepository
+    private val tipsRepo: MentalHealthTipsRepository,
+    private val sessionTimeHelper: SessionTimeHelper
 ) : ViewModel() {
 
     private val _quote = MutableStateFlow<Quote?>(null)
@@ -54,12 +56,14 @@ class PauseViewModel @Inject constructor(
 
     fun recordDeclined() {
         viewModelScope.launch {
+            val saved = sessionTimeHelper.getAvgSessionMinutes(currentPackage)
             statsRepo.recordEvent(
                 InterventionEvent(
                     packageName = currentPackage,
                     appName = currentAppName,
                     outcome = InterventionEvent.OUTCOME_DECLINED,
-                    reason = _selectedReason.value ?: InterventionEvent.REASON_HABIT
+                    reason = _selectedReason.value ?: InterventionEvent.REASON_HABIT,
+                    minutesSaved = saved
                 )
             )
         }
