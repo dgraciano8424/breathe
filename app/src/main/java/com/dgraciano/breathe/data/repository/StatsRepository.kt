@@ -37,6 +37,8 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
 
     suspend fun getWeeklyDeclined(): Int = dao.getTotalDeclined(startOfWeek())
 
+    suspend fun getTodayMinutesSaved(): Int = dao.getTotalMinutesSavedSince(startOfToday())
+
     suspend fun getTopAppsThisWeek(): List<AppStat> = dao.getTopApps(startOfWeek())
 
     suspend fun getFocusStreak(): Int {

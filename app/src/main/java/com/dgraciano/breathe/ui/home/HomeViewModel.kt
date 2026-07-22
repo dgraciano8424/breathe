@@ -37,6 +37,9 @@ class HomeViewModel @Inject constructor(
     private val _todayDeclined = MutableStateFlow(0)
     val todayDeclined: StateFlow<Int> = _todayDeclined
 
+    private val _todayMinutesSaved = MutableStateFlow(0)
+    val todayMinutesSaved: StateFlow<Int> = _todayMinutesSaved
+
     init {
         startService()
         refreshStats()
@@ -67,6 +70,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _todayAttempts.value = statsRepo.getTodayTotalAttempts()
             _todayDeclined.value = statsRepo.getTodayDeclined()
+            _todayMinutesSaved.value = statsRepo.getTodayMinutesSaved()
         }
     }
 }

@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.dgraciano.breathe.R
 import com.dgraciano.breathe.data.repository.AppRepository
@@ -14,6 +15,7 @@ import com.dgraciano.breathe.ui.pause.PauseActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 @AndroidEntryPoint
 class AppMonitorService : Service() {
@@ -24,9 +26,11 @@ class AppMonitorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val approvedSessions = mutableSetOf<String>()
     private var lastForeground: String? = null
+    private lateinit var powerManager: PowerManager
 
     override fun onCreate() {
         super.onCreate()
+        powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         startForeground(NOTIF_ID, buildNotification())
         startMonitoring()
     }
@@ -34,18 +38,22 @@ class AppMonitorService : Service() {
     private fun startMonitoring() {
         scope.launch {
             while (isActive) {
-                val current = detector.getCurrentApp()
-                if (current != lastForeground) {
-                    approvedSessions.remove(lastForeground)
-                    lastForeground = current
-                }
-                if (current != null && current !in approvedSessions) {
-                    if (appRepository.isBlocked(current)) {
-                        approvedSessions.add(current)
-                        launchPause(current)
+                if (powerManager.isInteractive) {
+                    val current = detector.getCurrentApp()
+                    
+                    if (current != lastForeground) {
+                        approvedSessions.remove(lastForeground)
+                        lastForeground = current
+                    }
+                    
+                    if (current != null && current !in approvedSessions) {
+                        if (appRepository.isBlocked(current)) {
+                            approvedSessions.add(current)
+                            launchPause(current)
+                        }
                     }
                 }
-                delay(500)
+                delay(500.milliseconds)
             }
         }
     }
@@ -61,8 +69,11 @@ class AppMonitorService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, getString(R.string.notification_channel_name),
-                    NotificationManager.IMPORTANCE_MIN)
+                NotificationChannel(
+                    CHANNEL_ID,
+                    getString(R.string.notification_channel_name),
+                    NotificationManager.IMPORTANCE_MIN
+                )
             )
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
