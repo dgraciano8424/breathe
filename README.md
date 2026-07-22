@@ -94,9 +94,10 @@ The onboarding screen walks you through this on first launch.
 
 ## Roadmap
 
-- [ ] App icons and launch screen
+- [x] App icons and launch screen
 - [ ] Per-app custom pause duration
-- [ ] Stats screen (how many pauses, how many times you went back)
+- [x] Stats screen (how many pauses, how many times you went back)
+- [x] Achievement progress and time-saved insights
 - [ ] Widget showing daily pause count
 - [ ] Play Store release
 
