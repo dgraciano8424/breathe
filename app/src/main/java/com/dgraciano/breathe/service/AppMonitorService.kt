@@ -41,15 +41,18 @@ class AppMonitorService : Service() {
                 if (powerManager.isInteractive) {
                     val current = detector.getCurrentApp()
                     
-                    if (current != lastForeground) {
-                        approvedSessions.remove(lastForeground)
-                        lastForeground = current
-                    }
-                    
-                    if (current != null && current !in approvedSessions) {
-                        if (appRepository.isBlocked(current)) {
-                            approvedSessions.add(current)
-                            launchPause(current)
+                    // Critical: Ignore our own app so we don't clear the session we just approved
+                    if (current != null && current != packageName) {
+                        if (current != lastForeground) {
+                            approvedSessions.remove(lastForeground)
+                            lastForeground = current
+                        }
+                        
+                        if (current !in approvedSessions) {
+                            if (appRepository.isBlocked(current)) {
+                                approvedSessions.add(current)
+                                launchPause(current)
+                            }
                         }
                     }
                 }

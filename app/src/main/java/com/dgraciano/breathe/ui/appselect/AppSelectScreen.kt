@@ -1,5 +1,7 @@
 package com.dgraciano.breathe.ui.appselect
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -17,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -47,7 +51,7 @@ fun AppSelectScreen(
                     TopAppBar(
                         title = {
                             Text(
-                                "Select Apps",
+                                "Limit Time Wasters",
                                 color = BreatheTextPrimary,
                                 fontWeight = FontWeight.Bold
                             )
@@ -111,7 +115,7 @@ fun AppSelectScreen(
                 ) {
                     item {
                         Text(
-                            text = if (searchQuery.isEmpty()) "ALL INSTALLED APPS" else "SEARCH RESULTS",
+                            text = if (searchQuery.isEmpty()) "MOST USED THIS WEEK" else "SEARCH RESULTS",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = BreatheSecondary,
@@ -121,7 +125,7 @@ fun AppSelectScreen(
                     }
                     
                     items(apps, key = { it.packageName }) { app ->
-                        AppListItem(app = app, onClick = { viewModel.blockApp(app) })
+                        AppListItem(app = app, onClick = { viewModel.toggleBlock(app) })
                     }
                 }
             }
@@ -131,13 +135,28 @@ fun AppSelectScreen(
 
 @Composable
 fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
+    val scale by animateFloatAsState(
+        targetValue = if (app.isBlocked) 1.05f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "pop"
+    )
+    
+    val borderColor by animateColorAsState(
+        targetValue = if (app.isBlocked) BreathePrimary else Color.Transparent,
+        label = "border"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
+            .scale(scale)
             .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = BreatheSurface.copy(alpha = 0.6f))
+        border = if (app.isBlocked) androidx.compose.foundation.BorderStroke(2.dp, borderColor) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = if (app.isBlocked) BreatheSurface.copy(alpha = 0.8f) else BreatheSurface.copy(alpha = 0.6f)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -169,23 +188,37 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
                     text = app.appName,
                     color = BreatheTextPrimary,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = app.packageName,
-                    color = BreatheTextMuted,
+                    text = formatUsageTime(app.usageTimeMinutes),
+                    color = if (app.usageTimeMinutes > 60) Color(0xFFFF8A80) else BreatheTextMuted,
                     fontSize = 12.sp
                 )
             }
             
-            Surface(
-                modifier = Modifier.size(24.dp),
-                shape = CircleShape,
-                color = Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(1.dp, BreathePrimary.copy(alpha = 0.4f))
-            ) {
-                // Circular empty indicator, looks cleaner than a faded checkmark
+            if (app.isBlocked) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Blocked",
+                    tint = BreathePrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.size(24.dp),
+                    shape = CircleShape,
+                    color = Color.Transparent,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BreatheDivider)
+                ) {}
             }
         }
     }
+}
+
+private fun formatUsageTime(minutes: Int): String {
+    if (minutes == 0) return "Not used this week"
+    val h = minutes / 60
+    val m = minutes % 60
+    return if (h > 0) "${h}h ${m}m spent this week" else "${m}m spent this week"
 }

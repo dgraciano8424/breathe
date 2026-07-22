@@ -1,7 +1,8 @@
 package com.dgraciano.breathe.ui.appselect
 
+import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.content.pm.ApplicationInfo
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import androidx.lifecycle.ViewModel
@@ -13,12 +14,15 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 data class InstalledApp(
     val packageName: String,
     val appName: String,
-    val icon: Drawable? = null
+    val icon: Drawable? = null,
+    val usageTimeMinutes: Int = 0,
+    val isBlocked: Boolean = false
 )
 
 @HiltViewModel
@@ -42,20 +46,33 @@ class AppSelectViewModel @Inject constructor(
     private fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val alreadyBlocked = repo.getAllBlockedPackageNames().toSet()
             
-            val installed = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || pm.getLaunchIntentForPackage(it.packageName) != null }
-                .filter { it.packageName != context.packageName }
-                .map { info ->
-                    InstalledApp(
-                        packageName = info.packageName,
-                        appName = pm.getApplicationLabel(info).toString(),
-                        icon = try { pm.getApplicationIcon(info) } catch (e: Exception) { null }
-                    )
-                }
-                .filter { it.packageName !in alreadyBlocked }
-                .sortedBy { it.appName }
+            // Get stats for the last 7 days
+            val now = System.currentTimeMillis()
+            val start = now - TimeUnit.DAYS.toMillis(7)
+            val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
+            
+            // Find ALL apps that have a launcher activity (user-facing apps)
+            val mainIntent = Intent(Intent.ACTION_MAIN, null)
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+            
+            val installed = resolveInfos.map { info ->
+                val packageName = info.activityInfo.packageName
+                val totalTime = stats[packageName]?.totalTimeInForeground ?: 0L
+                InstalledApp(
+                    packageName = packageName,
+                    appName = info.loadLabel(pm).toString(),
+                    icon = try { info.loadIcon(pm) } catch (e: Exception) { null },
+                    usageTimeMinutes = (totalTime / 60000).toInt(),
+                    isBlocked = packageName in alreadyBlocked
+                )
+            }
+            .distinctBy { it.packageName }
+            .filter { it.packageName != context.packageName }
+            .sortedByDescending { it.usageTimeMinutes }
             
             _allApps.value = installed
         }
@@ -65,9 +82,19 @@ class AppSelectViewModel @Inject constructor(
         _searchQuery.value = query
     }
 
-    fun blockApp(app: InstalledApp) = viewModelScope.launch {
-        repo.blockApp(BlockedApp(packageName = app.packageName, appName = app.appName))
-        // Update local list to remove blocked app immediately
-        _allApps.update { current -> current.filter { it.packageName != app.packageName } }
+    fun toggleBlock(app: InstalledApp) = viewModelScope.launch {
+        if (app.isBlocked) {
+            repo.unblockApp(BlockedApp(packageName = app.packageName, appName = app.appName))
+        } else {
+            repo.blockApp(BlockedApp(packageName = app.packageName, appName = app.appName))
+        }
+        
+        // Update local list to toggle blocked state immediately
+        _allApps.update { current -> 
+            current.map { 
+                if (it.packageName == app.packageName) it.copy(isBlocked = !app.isBlocked) 
+                else it
+            }
+        }
     }
 }
