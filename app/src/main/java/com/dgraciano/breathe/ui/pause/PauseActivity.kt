@@ -72,6 +72,14 @@ class PauseActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val blockedPackage = intent.getStringExtra(EXTRA_PACKAGE) ?: ""
+        val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: blockedPackage
+        viewModel.init(blockedPackage, appName)
+    }
+
     companion object {
         private const val EXTRA_PACKAGE = "extra_package"
         private const val EXTRA_APP_NAME = "extra_app_name"

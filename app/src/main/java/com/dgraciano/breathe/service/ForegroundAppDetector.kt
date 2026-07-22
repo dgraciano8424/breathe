@@ -9,14 +9,18 @@ class ForegroundAppDetector @Inject constructor(
 ) {
     fun getCurrentApp(): String? {
         val now = System.currentTimeMillis()
-        val start = now - 5000L // Look back 5 seconds
+        // Increase window to 10 seconds for reliability on emulators/slow devices
+        val start = now - 10_000L 
+        
         val events = usageStatsManager.queryEvents(start, now)
         val event = UsageEvents.Event()
         var lastPackageName: String? = null
         
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+            // ACTIVITY_RESUMED (1) is more reliable than MOVE_TO_FOREGROUND on some APIs
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED || 
+                event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
                 lastPackageName = event.packageName
             }
         }

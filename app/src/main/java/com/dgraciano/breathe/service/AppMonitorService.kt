@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
+import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.dgraciano.breathe.R
 import com.dgraciano.breathe.data.repository.AppRepository
@@ -33,6 +35,7 @@ class AppMonitorService : Service() {
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         startForeground(NOTIF_ID, buildNotification())
         startMonitoring()
+        Log.d("BreatheService", "Service created and monitoring started")
     }
 
     private fun startMonitoring() {
@@ -41,19 +44,27 @@ class AppMonitorService : Service() {
                 if (powerManager.isInteractive) {
                     val current = detector.getCurrentApp()
                     
-                    // Critical: Ignore our own app so we don't clear the session we just approved
                     if (current != null && current != packageName) {
                         if (current != lastForeground) {
+                            Log.d("BreatheService", "Foreground app changed: $current")
                             approvedSessions.remove(lastForeground)
                             lastForeground = current
                         }
                         
                         if (current !in approvedSessions) {
                             if (appRepository.isBlocked(current)) {
-                                approvedSessions.add(current)
-                                launchPause(current)
+                                Log.d("BreatheService", "Blocking app: $current")
+                                if (Settings.canDrawOverlays(this@AppMonitorService)) {
+                                    approvedSessions.add(current)
+                                    launchPause(current)
+                                } else {
+                                    Log.w("BreatheService", "Cannot block: Overlay permission missing")
+                                }
                             }
                         }
+                    } else if (current == null) {
+                        // If we can't detect, reset lastForeground so we re-check next time something is found
+                        lastForeground = null
                     }
                 }
                 delay(500.milliseconds)
@@ -62,10 +73,10 @@ class AppMonitorService : Service() {
     }
 
     private fun launchPause(packageName: String) {
-        startActivity(
-            PauseActivity.newIntent(this, packageName)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
+        val intent = PauseActivity.newIntent(this, packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        startActivity(intent)
     }
 
     private fun buildNotification(): Notification {

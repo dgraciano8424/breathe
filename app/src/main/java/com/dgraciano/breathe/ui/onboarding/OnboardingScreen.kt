@@ -1,7 +1,9 @@
 package com.dgraciano.breathe.ui.onboarding
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -31,9 +33,9 @@ fun OnboardingScreen(
 ) {
     val context = LocalContext.current
     val hasUsage by viewModel.hasUsagePermission.collectAsState()
+    val hasOverlay by viewModel.hasOverlayPermission.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Observe lifecycle to refresh permission state when returning from settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -46,9 +48,8 @@ fun OnboardingScreen(
         }
     }
 
-    LaunchedEffect(hasUsage) {
-        if (hasUsage) {
-            // Give a small delay for the user to see the "Granted" state before auto-advancing
+    LaunchedEffect(hasUsage, hasOverlay) {
+        if (hasUsage && hasOverlay) {
             onPermissionsGranted()
         }
     }
@@ -68,27 +69,21 @@ fun OnboardingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             // Breathing orb
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(100.dp)) {
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(100.dp)
                         .scale(pulse)
                         .background(BreatheRingOuter, CircleShape)
                 )
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
-                        .scale(pulse * 0.95f)
-                        .background(BreatheRingMid, CircleShape)
-                )
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
+                        .size(40.dp)
                         .background(
                             androidx.compose.ui.graphics.Brush.radialGradient(
                                 listOf(BreathePrimary.copy(alpha = 0.9f), BreatheSecondary.copy(alpha = 0.6f))
@@ -98,92 +93,99 @@ fun OnboardingScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Breathe",
-                fontSize = 42.sp,
+                text = "Digital Sanctuary",
+                fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = BreatheTextPrimary,
-                letterSpacing = 1.sp
+                color = BreatheTextPrimary
             )
-            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Welcome to your digital sanctuary.\nA mindful pause for a better life.",
+                text = "Let's set up your mindful space.",
                 textAlign = TextAlign.Center,
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
+                fontSize = 15.sp,
                 color = BreatheTextSecondary
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Permission card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = BreatheSurface.copy(alpha = 0.7f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BreatheDivider)
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        "Digital Awareness",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        color = BreathePrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Breathe needs 'Usage Access' to notice when you open distracting apps and help you pause.",
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        color = BreatheTextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Button(
-                        onClick = {
-                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                            context.startActivity(intent)
-                        },
-                        enabled = !hasUsage,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(26.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BreathePrimary,
-                            contentColor = BreatheOnPrimary,
-                            disabledContainerColor = BreatheSecondary.copy(alpha = 0.3f),
-                            disabledContentColor = BreatheTextSecondary
-                        )
-                    ) {
-                        Text(
-                            if (hasUsage) "Access Granted ✓" else "Grant Usage Access",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    }
+            // Permission 1: Usage Stats
+            PermissionCard(
+                title = "Digital Awareness",
+                description = "Lets Breathe notice when you open distracting apps.",
+                isGranted = hasUsage,
+                onClick = {
+                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                 }
-            }
+            )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            if (hasUsage) {
+            // Permission 2: Overlay
+            PermissionCard(
+                title = "Ocean Brush Overlay",
+                description = "Required to show the mindful pause over other apps.",
+                isGranted = hasOverlay,
+                onClick = {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${context.packageName}")
+                    )
+                    context.startActivity(intent)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            if (hasUsage && hasOverlay) {
                 Button(
                     onClick = { onPermissionsGranted() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BreatheSecondary,
-                        contentColor = BreatheOnPrimary
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = BreatheSecondary)
                 ) {
-                    Text("Enter the Sanctuary", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Enter the Sanctuary", fontWeight = FontWeight.Bold)
                 }
-            } else {
-                Text(
-                    "Tap above to begin your journey",
-                    fontSize = 12.sp,
-                    color = BreatheTextMuted
-                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PermissionCard(
+    title: String,
+    description: String,
+    isGranted: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = BreatheSurface.copy(alpha = 0.7f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isGranted) BreathePrimary.copy(alpha = 0.5f) else BreatheDivider)
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, color = if (isGranted) BreathePrimary else BreatheTextPrimary)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(description, fontSize = 12.sp, color = BreatheTextSecondary, lineHeight = 16.sp)
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Button(
+                onClick = onClick,
+                enabled = !isGranted,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BreathePrimary,
+                    disabledContainerColor = BreatheDivider
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(if (isGranted) "OK ✓" else "Grant", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

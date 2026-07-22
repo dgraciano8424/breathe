@@ -43,7 +43,7 @@ class AppSelectViewModel @Inject constructor(
 
     init { loadInstalledApps() }
 
-    private fun loadInstalledApps() {
+    fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
             val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -54,20 +54,20 @@ class AppSelectViewModel @Inject constructor(
             val start = now - TimeUnit.DAYS.toMillis(7)
             val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
             
-            // Find ALL apps that have a launcher activity (user-facing apps)
+            // Get ALL launcher activities
             val mainIntent = Intent(Intent.ACTION_MAIN, null)
             mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
             val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
             
             val installed = resolveInfos.map { info ->
-                val packageName = info.activityInfo.packageName
-                val totalTime = stats[packageName]?.totalTimeInForeground ?: 0L
+                val pkg = info.activityInfo.packageName
+                val totalTime = stats[pkg]?.totalTimeInForeground ?: 0L
                 InstalledApp(
-                    packageName = packageName,
+                    packageName = pkg,
                     appName = info.loadLabel(pm).toString(),
                     icon = try { info.loadIcon(pm) } catch (e: Exception) { null },
                     usageTimeMinutes = (totalTime / 60000).toInt(),
-                    isBlocked = packageName in alreadyBlocked
+                    isBlocked = pkg in alreadyBlocked
                 )
             }
             .distinctBy { it.packageName }
@@ -89,10 +89,10 @@ class AppSelectViewModel @Inject constructor(
             repo.blockApp(BlockedApp(packageName = app.packageName, appName = app.appName))
         }
         
-        // Update local list to toggle blocked state immediately
-        _allApps.update { current -> 
-            current.map { 
-                if (it.packageName == app.packageName) it.copy(isBlocked = !app.isBlocked) 
+        // Update local state immediately
+        _allApps.update { current ->
+            current.map {
+                if (it.packageName == app.packageName) it.copy(isBlocked = !app.isBlocked)
                 else it
             }
         }
