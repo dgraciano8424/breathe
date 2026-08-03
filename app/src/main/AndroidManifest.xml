@@ -50,6 +50,19 @@
                 android:value="monitorForegroundApp" />
         </service>
 
+        <service
+            android:name=".service.accessibility.BreatheAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/breathe_accessibility_service" />
+        </service>
+
         <receiver
             android:name=".service.BootReceiver"
             android:exported="true">

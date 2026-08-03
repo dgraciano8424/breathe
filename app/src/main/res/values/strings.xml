@@ -23,4 +23,10 @@
     <string name="stats_title">Your Insights</string>
     <string name="first_time_today">First time today</string>
     <string name="nth_time_today">%d times today</string>
+    <string name="accessibility_service_label">Breathe mindful app pauses</string>
+    <string name="accessibility_service_description">Notices when apps you selected enter the foreground so Breathe can offer one mindful pause. Breathe does not read screen content or control other apps.</string>
+    <string name="accessibility_disclosure_title">Allow Breathe to notice selected apps</string>
+    <string name="accessibility_disclosure_body">Breathe uses Android Accessibility access to notice the name of the app in the foreground when an app you selected opens, then show your Breathe moment. Breathe does not read screen content, tap buttons, or collect what you do inside apps. Your selected apps and pause activity stay on this device. You can turn access off at any time in Settings.</string>
+    <string name="accessibility_consent">I understand and want to enable this feature.</string>
+    <string name="open_accessibility_settings">Open Accessibility settings</string>
 </resources>
