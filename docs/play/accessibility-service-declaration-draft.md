@@ -26,21 +26,24 @@ Breathe lets a user select distracting apps. When one of those selected apps ent
 - The user must select “I understand and want to enable this feature” before the settings button is enabled.
 - The system settings screen requires the user to enable the service.
 - The user can disable the service at any time in Android Settings.
-- Android Back, Skip, and Continue remain available in every Breathe moment.
+- Android Back, “I’ll do something else,” and Continue remain available in every Breathe moment.
 
 ## Review video sequence
 
 1. Launch Breathe from a fresh install.
 2. Show the complete prominent disclosure without cutting away.
-3. Select the affirmative-consent checkbox.
-4. Tap “Open Accessibility settings.”
-5. Enable “Breathe mindful app pauses” in the Android system UI.
-6. Return to Breathe and select one test social app.
-7. Open the selected app and show the automatic Breathe moment.
-8. Tap Continue and show that the selected app opens.
-9. Leave, reopen the selected app, and tap Not right now.
-10. Return to Android Accessibility settings and disable Breathe.
-11. Reopen the selected app and show that no Breathe moment appears.
+3. Withhold consent: leave “I understand and want to enable this feature” unchecked and show that “Open Accessibility settings” is disabled, so Android Settings is not opened.
+4. Leave Breathe and relaunch it; show the complete disclosure again, still before any Settings navigation.
+5. Select the affirmative-consent checkbox and show that “Open Accessibility settings” becomes enabled.
+6. Tap “Open Accessibility settings.”
+7. Enable “Breathe mindful app pauses” in the Android system UI.
+8. Return to Breathe and select one test social app.
+9. Open the selected app and show the automatic Breathe moment.
+10. Tap Continue and show that the selected app opens.
+11. Leave, reopen the selected app, and tap “I’ll do something else.”
+12. Show that Breathe returns to Home rather than preventing the user from leaving the moment.
+13. Return to Android Accessibility settings and disable Breathe.
+14. Reopen the selected app and show that no Breathe moment appears.
 
 ## Play Console declaration answers
 
@@ -72,7 +75,7 @@ This is **not** a package-wide Data safety “No data collected” answer. Googl
 | Explain purpose | Same disclosure: “…then show your Breathe moment.” | The feature purpose matches the declaration and video. |
 | Explain material limits | Same disclosure: “Breathe does not read screen content, tap buttons, or collect what you do inside apps.” | XML disables window-content retrieval and gestures. |
 | Explain storage/control | Same disclosure: “Your selected apps and pause activity stay on this device. You can turn access off at any time in Settings.” | Show consent, Android enablement, and later disablement. |
-| Obtain affirmative consent before settings | The checkbox reads “I understand and want to enable this feature.” `Open Accessibility settings` is disabled until it is selected. | Capture the disabled-to-enabled transition in the video. |
+| Obtain affirmative consent before settings | The checkbox reads “I understand and want to enable this feature.” `Open Accessibility settings` is disabled until it is selected. | First show withheld consent and the disabled button without opening Settings; relaunch Breathe to show the disclosure again; then capture the enabled button and user-initiated Settings navigation. |
 
 ## Source-to-declaration consistency check
 
@@ -87,13 +90,13 @@ Checked against the current source tree on 2026-08-03:
 | System settings and affirmative consent | `OnboardingScreen` starts `Settings.ACTION_ACCESSIBILITY_SETTINGS`; its button is enabled only when `disclosureAccepted && !hasAccessibilityPermission`. | Matches. |
 | Disclosure text and local storage claim | `strings.xml` contains the disclosure and consent text quoted above; the selected-app and intervention-event repositories use the on-device Room database. | Matches for the feature scope. |
 | Fail-open behavior | `BreatheAccessibilityService.launchPause` wraps `startActivity` in `runCatching`; a launch failure is logged rather than blocking the selected app. | Matches. |
-| Every-moment “Back, Skip, and Continue” wording | `PauseActivity` provides Continue and default Android Back behavior. The visible decline control is currently labeled “I’ll do something else,” not “Skip” or “Not right now.” | **Recording/documentation discrepancy:** use the actual label in the recorded video, or align the UI before submission. |
+| Every-moment navigation | `PauseActivity` provides Continue and default Android Back behavior. The visible decline control is labeled “I’ll do something else.” | Matches. The video uses the shipped label and shows both user-choice paths. |
 
 ## Reviewer-video recording notes
 
-The numbered sequence above is the requested script. To keep the evidence accurate to the current build, step 9 should visually show the control label actually shipped: **“I’ll do something else”** (the decline path that returns to Home), unless the UI is changed to “Not right now” before recording. Do not edit, accelerate, or cut away from the disclosure, consent state, Android Settings enable/disable state, selected-app transition, continue path, decline path, or final disabled-service verification.
+The numbered sequence above is the current-build recording script. It uses the shipped decline label, **“I’ll do something else,”** which records the declined outcome and returns to Home. Do not edit, accelerate, or cut away from the initial disclosure, withheld-consent/disabled-button state, repeated disclosure after relaunch, affirmative-consent state, Android Settings enable/disable state, selected-app transition, Continue path, decline path, or final disabled-service verification.
 
-Record on a device with one clearly identifiable test social app. Begin at a fresh install, avoid notifications/overlays that conceal the system UI, and use the same release build submitted for review. The video should demonstrate user choice and the fail-open outcome: Continue returns to the selected app, and after disabling the service the selected app opens without a Breathe moment.
+Record on a device with one clearly identifiable test social app. Begin at a fresh install, avoid notifications/overlays that conceal the system UI, and use the same release build submitted for review. The video should demonstrate prominent disclosure before Settings, affirmative consent, and non-blocking user choice: Continue returns to the selected app, “I’ll do something else” returns to Home, and after disabling the service the selected app opens without a Breathe moment. Separately, the implementation's `runCatching` around launch is the bounded fail-open behavior if the pause activity cannot be started.
 
 ## Policy references and risk notes
 
@@ -101,6 +104,7 @@ Record on a device with one clearly identifiable test social app. Begin at a fre
 
 - Google Play says non-accessibility-tool uses of `AccessibilityService` require an Accessibility declaration, clear in-app disclosure of data access/use, and affirmative user consent. It also says to use narrower APIs/permissions where possible and to document Accessibility API use in the Play listing. [Permissions and APIs that Access Sensitive Information](https://support.google.com/googleplay/android-developer/answer/16558241?hl=en&rd=1) (accessed 2026-08-03).
 - Google Play requires a clear in-app disclosure immediately before requesting a sensitive API capability; a disclosure is not a substitute for a privacy policy or Data safety section. [Best practices for prominent disclosure and consent](https://support.google.com/googleplay/android-developer/answer/11150561?hl=en) (accessed 2026-08-03).
+- Google Play's video guidance calls for the app opening, the complete disclosure/consent flow, both consent and non-consent flows (including triggering the disclosure again), and a core feature using the declared capability. [Best practices for prominent disclosure and consent](https://support.google.com/googleplay/android-developer/answer/11150561?hl=en) (accessed 2026-08-03).
 - Data safety “collection” means transmission off device. The form is package-wide and must cover third-party SDKs; developers are responsible for accuracy. [Provide information for Google Play's Data safety section](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en) (accessed 2026-08-03).
 - Android's service metadata supports the `isAccessibilityTool`, window-content-retrieval, and gesture capabilities used in this review. [Android `AccessibilityServiceInfo` reference](https://developer.android.com/reference/android/accessibilityservice/AccessibilityServiceInfo) (accessed 2026-08-03).
 
@@ -109,4 +113,4 @@ Record on a device with one clearly identifiable test social app. Begin at a fre
 - Keep the listing, declaration, disclosure, and video limited to package/window transitions, one mindful pause, and user choice. Do not describe the feature as app blocking, content analysis, accessibility/disability support, or automated decision-making.
 - Keep `isAccessibilityTool=false`, `canRetrieveWindowContent=false`, and `canPerformGestures=false` in the submitted artifact. Do not add telemetry, account handling, content retrieval, gestures, or data transfer for this feature without revising the disclosure, declaration, Data safety response, review video, and policy assessment.
 - The “no narrower API” statement is an engineering conclusion, not a Google Play guarantee. Reconfirm it for the release and be prepared to explain why existing alternatives do not provide equivalent selected-app foreground-transition timing.
-- Resolve the step-9 control-label discrepancy before recording. This draft makes no prediction that the declaration will be accepted.
+- Use the script's current shipped labels in the recording. If a later release changes a label or navigation path, update the declaration, video, and source-to-declaration check before submission. This draft makes no prediction that the declaration will be accepted.
