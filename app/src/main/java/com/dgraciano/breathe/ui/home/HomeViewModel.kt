@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
-import com.dgraciano.breathe.service.AppMonitorService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +40,6 @@ class HomeViewModel @Inject constructor(
     val todayMinutesSaved: StateFlow<Int> = _todayMinutesSaved
 
     init {
-        startService()
         refreshStats()
         loadAppsWithStats()
     }
@@ -63,8 +61,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun removeApp(app: BlockedApp) = viewModelScope.launch { repo.unblockApp(app) }
-
-    fun startService() = AppMonitorService.start(context)
 
     fun refreshStats() {
         viewModelScope.launch {
