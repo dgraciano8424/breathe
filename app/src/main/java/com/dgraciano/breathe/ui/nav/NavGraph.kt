@@ -28,10 +28,10 @@ object Routes {
 fun BreatheNavGraph() {
     val nav = rememberNavController()
     val onboardingViewModel: OnboardingViewModel = hiltViewModel()
-    val hasUsage by onboardingViewModel.hasUsagePermission.collectAsState()
+    val hasAccessibility by onboardingViewModel.hasAccessibilityPermission.collectAsState()
 
     // Determine starting destination based on permission
-    val startDest = if (hasUsage) Routes.HOME else Routes.ONBOARDING
+    val startDest = if (hasAccessibility) Routes.HOME else Routes.ONBOARDING
 
     NavHost(
         navController = nav,

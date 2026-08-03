@@ -1,9 +1,8 @@
 package com.dgraciano.breathe.ui.onboarding
 
-import android.app.AppOpsManager
 import android.content.Context
-import android.os.Process
 import androidx.lifecycle.ViewModel
+import com.dgraciano.breathe.service.accessibility.AccessibilityServiceState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,21 +13,14 @@ import javax.inject.Inject
 class OnboardingViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+    private val _hasAccessibilityPermission = MutableStateFlow(false)
+    val hasAccessibilityPermission: StateFlow<Boolean> = _hasAccessibilityPermission
 
-    private val _hasUsagePermission = MutableStateFlow(false)
-    val hasUsagePermission: StateFlow<Boolean> = _hasUsagePermission
-
-    fun refreshPermissionState() {
-        _hasUsagePermission.value = checkUsagePermission()
+    init {
+        refreshPermissionState()
     }
 
-    private fun checkUsagePermission(): Boolean {
-        val ops = context.getSystemService(AppOpsManager::class.java)
-        val mode = ops.unsafeCheckOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS,
-            Process.myUid(),
-            context.packageName
-        )
-        return mode == AppOpsManager.MODE_ALLOWED
+    fun refreshPermissionState() {
+        _hasAccessibilityPermission.value = AccessibilityServiceState.isEnabled(context)
     }
 }

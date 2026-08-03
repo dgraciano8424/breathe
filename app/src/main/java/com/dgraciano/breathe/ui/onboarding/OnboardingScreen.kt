@@ -5,15 +5,18 @@ import android.provider.Settings
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -21,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.dgraciano.breathe.R
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
 
@@ -30,8 +34,9 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val hasUsage by viewModel.hasUsagePermission.collectAsState()
+    val hasAccessibilityPermission by viewModel.hasAccessibilityPermission.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
+    var disclosureAccepted by rememberSaveable { mutableStateOf(false) }
 
     // Observe lifecycle to refresh permission state when returning from settings
     DisposableEffect(lifecycleOwner) {
@@ -46,11 +51,8 @@ fun OnboardingScreen(
         }
     }
 
-    LaunchedEffect(hasUsage) {
-        if (hasUsage) {
-            // Give a small delay for the user to see the "Granted" state before auto-advancing
-            onPermissionsGranted()
-        }
+    LaunchedEffect(hasAccessibilityPermission) {
+        if (hasAccessibilityPermission) onPermissionsGranted()
     }
 
     val transition = rememberInfiniteTransition(label = "onboard")
@@ -127,38 +129,43 @@ fun OnboardingScreen(
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Text(
-                        "Digital Awareness",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        color = BreathePrimary
+                        text = stringResource(R.string.accessibility_disclosure_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = BreatheTextPrimary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Breathe needs 'Usage Access' to notice when you open distracting apps and help you pause.",
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        color = BreatheTextPrimary
+                        text = stringResource(R.string.accessibility_disclosure_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = BreatheTextSecondary
                     )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Button(
-                        onClick = {
-                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                            context.startActivity(intent)
-                        },
-                        enabled = !hasUsage,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(26.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = BreathePrimary,
-                            contentColor = BreatheOnPrimary,
-                            disabledContainerColor = BreatheSecondary.copy(alpha = 0.3f),
-                            disabledContentColor = BreatheTextSecondary
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = disclosureAccepted,
+                                onValueChange = { disclosureAccepted = it }
+                            )
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = disclosureAccepted,
+                            onCheckedChange = null
                         )
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.accessibility_consent))
+                    }
+                    Button(
+                        onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                        enabled = disclosureAccepted && !hasAccessibilityPermission,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                     ) {
                         Text(
-                            if (hasUsage) "Access Granted ✓" else "Grant Usage Access",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            if (hasAccessibilityPermission) stringResource(R.string.granted)
+                            else stringResource(R.string.open_accessibility_settings)
                         )
                     }
                 }
@@ -166,7 +173,7 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            if (hasUsage) {
+            if (hasAccessibilityPermission) {
                 Button(
                     onClick = { onPermissionsGranted() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
