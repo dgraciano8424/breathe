@@ -1,12 +1,12 @@
 # Breathe Application Audit
 
 **Audit date:** 2026-07-21
-**Last revised:** 2026-08-05 — blockers 2, 3, and 5 resolved; verification now runs against a configured SDK.
+**Last revised:** 2026-08-05 — blockers 2, 3, 4, and 5 resolved; only background activity launch remains. Verification now runs against a configured SDK.
 **Scope:** all production Kotlin/Compose source, unit tests, Android manifest, Gradle configuration, resources, `README.md`, and `.planning/codebase/` documents.
 
 ## Verdict
 
-The app has a coherent MVVM/Repository/Hilt/Room structure. Since the original audit, the data-integrity and detection blockers have been fixed and the test suite has been brought back in sync with production APIs. It is **still not production-ready**, for one reason above all others: the core interception mechanism is not guaranteed to work on Android 10+. That is a product/platform decision, not a code cleanup.
+The app has a coherent MVVM/Repository/Hilt/Room structure. Since the original audit, every data-integrity, detection, and performance blocker has been fixed, and the test suite has been brought back in sync with production APIs and extended. It is **still not production-ready**, but now for a single reason: the core interception mechanism is not guaranteed to work on Android 10+. That is a product/platform decision, not a code cleanup — and it should be settled by running the app on a physical device before any more code is written against it.
 
 ## Blockers
 
@@ -19,10 +19,9 @@ The app has a coherent MVVM/Repository/Hilt/Room structure. Since the original a
 
 3. ~~**Foreground detection loses the current app after five seconds.**~~ **Resolved** (`7364025`). `ForegroundAppDetector` remembers the last app it saw resume and reports it until a newer transition replaces it. Cold start scans back 24 hours to recover an already-open app; later scans are incremental with a 1s overlap. The cursor only advances on a non-empty result, so usage access granted after the first poll still recovers, and a 5s throttle bounds the wide-scan path. Now `@Singleton`, since the cached state depends on a single instance.
 
-4. **A 28-day device event scan runs from the UI action path.** **Partially addressed** (`7da8b3e`) — it no longer blocks the main thread, because the enclosing coroutine moved from `viewModelScope` (which dispatches to `Main.immediate`) to the IO-backed application scope. Still open: the scan's cost is unbounded, and `SessionTimeHelper`'s cache has no invalidation, so a user's average session time is frozen at whatever it was the first time they declined that app.
-   - `app/src/main/java/com/dgraciano/breathe/service/SessionTimeHelper.kt:16`
+4. ~~**A 28-day device event scan runs from the UI action path.**~~ **Resolved** (`7da8b3e`, `3383360`). The scan moved off the main thread when the enclosing coroutine moved from `viewModelScope` (which dispatches to `Main.immediate`) to the IO-backed application scope. Its cost is now bounded — a 7-day window, since the platform only retains usage events for about a week, averaged over the 50 newest sessions — and cached averages carry a 6-hour TTL, so a user's session time is no longer frozen at whatever it was the first time they declined that app. The cache is a `ConcurrentHashMap`, because declines now share an application scope. `SessionTimeHelperTest` covers it.
 
-5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 50 tests across 5 classes and passes.
+5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 60 tests across 6 classes and passes.
 
 ## High-priority corrections
 
@@ -48,7 +47,7 @@ Open:
 Done:
 
 - ~~Make event recording survive navigation/teardown.~~ Done via the application scope (`7da8b3e`). Note this diverges from the original recommendation: rather than awaiting persistence behind an in-progress state, the write is detached so the user's Yes/No stays instant. Blocking the exit on a Room write plus a usage scan was the wrong trade for this interaction.
-- ~~Move usage-history analysis to `Dispatchers.IO`.~~ Done (`7da8b3e`); bounding its cost and invalidating the cache remain open under blocker 4.
+- ~~Move usage-history analysis to `Dispatchers.IO`, bound its cost, and apply time-based cache invalidation.~~ Done (`7da8b3e`, `3383360`).
 - ~~Redesign foreground detection around a durable cursor/last-known state and test restart, unlock, delayed-poll, and permission-grant scenarios.~~ Done (`7364025`), with tests for each scenario.
 - ~~Use persisted `minutesSaved` totals consistently.~~ Done (`c148554`). `StatsViewModel` and `HomeScreen` both read recorded per-event minutes; the `declines * 20` estimate is gone.
 
@@ -59,7 +58,7 @@ Done:
 | Usage-access onboarding | Implemented | Returning-user behavior exists but plans describe older routing details. |
 | Foreground monitoring | Implemented with one blocker | Detection is now durable; modern background-launch restrictions remain unresolved. |
 | Blocked-app picker | Implemented | Broad package visibility and eager Drawable loading should be tightened. |
-| Pause/breathing flow | Implemented with blockers | Persistence race fixed; small-screen accessibility remains. |
+| Pause/breathing flow | Implemented | Persistence race fixed; small-screen and reduced-motion accessibility remain as corrections, not blockers. |
 | Quote API + Room cache | Implemented | No refresh TTL; replacement is non-transactional. |
 | Stats screen | Implemented | Calculations now consistent with recorded data. |
 | Achievements | Implemented | Missing from older architecture maps. |
@@ -77,7 +76,8 @@ Done:
 
 ## Verification status
 
-- `./gradlew testDebugUnitTest assembleDebug` passes: 50 tests across 5 classes, debug APK builds.
+- `./gradlew testDebugUnitTest assembleDebug` passes: 60 tests across 6 classes, debug APK builds.
 - Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
 - The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
 - Still unverified on hardware: no instrumented or on-device run has been performed, which is exactly what blocker 1 needs.
+- Note when writing usage-event fixtures: events carry real epoch timestamps, and the production code reads a zero timestamp as "no session in progress". Fixtures that start at zero are silently dropped and can make a test pass for the wrong reason.
