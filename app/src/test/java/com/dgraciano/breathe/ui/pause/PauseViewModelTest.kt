@@ -2,8 +2,11 @@ package com.dgraciano.breathe.ui.pause
 
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
+import com.dgraciano.breathe.data.repository.MentalHealthTip
+import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -28,7 +31,9 @@ class PauseViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var quoteRepo: QuoteRepository
     private lateinit var statsRepo: StatsRepository
+    private lateinit var tipsRepo: MentalHealthTipsRepository
     private lateinit var sessionTimeHelper: SessionTimeHelper
+    private lateinit var sessionApprovalStore: SessionApprovalStore
     private lateinit var viewModel: PauseViewModel
 
     @Before
@@ -36,8 +41,13 @@ class PauseViewModelTest {
         Dispatchers.setMain(testDispatcher)
         quoteRepo = mockk()
         statsRepo = mockk()
+        tipsRepo = mockk {
+            every { getRandomTip() } returns MentalHealthTip("Ground Yourself", "Feel your feet on the floor.", "ground")
+            every { getRandomActivity() } returns "Step outside for 2 minutes"
+        }
         sessionTimeHelper = mockk { every { getAvgSessionMinutes(any()) } returns 20 }
-        viewModel = PauseViewModel(quoteRepo, statsRepo, sessionTimeHelper)
+        sessionApprovalStore = mockk(relaxed = true)
+        viewModel = PauseViewModel(quoteRepo, statsRepo, tipsRepo, sessionTimeHelper, sessionApprovalStore)
     }
 
     @After

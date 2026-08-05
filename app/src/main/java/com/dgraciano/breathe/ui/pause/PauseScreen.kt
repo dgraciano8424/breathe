@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.MentalHealthTip
+import com.dgraciano.breathe.ui.components.ConfettiOverlay
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
 import kotlinx.coroutines.delay
@@ -53,9 +54,17 @@ fun PauseScreen(
     onNo: () -> Unit
 ) {
     var showContent by remember { mutableStateOf(false) }
+    var showConfetti by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(100)
         showContent = true
+    }
+
+    LaunchedEffect(showConfetti) {
+        if (showConfetti) {
+            delay(850)
+            onNo()
+        }
     }
 
     val brushOffset by animateFloatAsState(
@@ -249,7 +258,8 @@ fun PauseScreen(
                 // Actions
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = onNo,
+                        onClick = { showConfetti = true },
+                        enabled = !showConfetti,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(28.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BreathePrimary, contentColor = BreatheOnPrimary)
@@ -266,6 +276,10 @@ fun PauseScreen(
             }
         }
         
+        if (showConfetti) {
+            ConfettiOverlay(modifier = Modifier.fillMaxSize())
+        }
+
         // Final "Wave Brush" that clears the screen
         if (!showContent) {
             Box(

@@ -56,7 +56,7 @@ class PauseActivity : ComponentActivity() {
                     onReasonSelected = viewModel::selectReason,
                     onYes = {
                         viewModel.recordOpened()
-                        finish() // Just finish to let them go to the app they were opening
+                        finish()
                     },
                     onNo = {
                         viewModel.recordDeclined()

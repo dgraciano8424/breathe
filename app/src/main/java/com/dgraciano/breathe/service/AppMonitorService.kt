@@ -24,9 +24,9 @@ class AppMonitorService : Service() {
 
     @Inject lateinit var detector: ForegroundAppDetector
     @Inject lateinit var appRepository: AppRepository
+    @Inject lateinit var sessionApprovalStore: SessionApprovalStore
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val approvedSessions = mutableSetOf<String>()
     private var lastForeground: String? = null
     private lateinit var powerManager: PowerManager
 
@@ -43,28 +43,26 @@ class AppMonitorService : Service() {
             while (isActive) {
                 if (powerManager.isInteractive) {
                     val current = detector.getCurrentApp()
-                    
+
+                    // If we switched apps, reset the approved session
                     if (current != null && current != packageName) {
                         if (current != lastForeground) {
                             Log.d("BreatheService", "Foreground app changed: $current")
-                            approvedSessions.remove(lastForeground)
+                            // We ONLY remove the session when moving away
+                            sessionApprovalStore.revoke(lastForeground)
                             lastForeground = current
                         }
-                        
-                        if (current !in approvedSessions) {
+
+                        // Only block if the session hasn't been approved via the pause screen
+                        if (!sessionApprovalStore.isApproved(current)) {
                             if (appRepository.isBlocked(current)) {
                                 Log.d("BreatheService", "Blocking app: $current")
                                 if (Settings.canDrawOverlays(this@AppMonitorService)) {
-                                    approvedSessions.add(current)
+                                    // Approval only happens when the user taps "YES" in PauseActivity
                                     launchPause(current)
-                                } else {
-                                    Log.w("BreatheService", "Cannot block: Overlay permission missing")
                                 }
                             }
                         }
-                    } else if (current == null) {
-                        // If we can't detect, reset lastForeground so we re-check next time something is found
-                        lastForeground = null
                     }
                 }
                 delay(500.milliseconds)

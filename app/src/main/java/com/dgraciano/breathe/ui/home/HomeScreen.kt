@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.dgraciano.breathe.data.model.BlockedApp
+import com.dgraciano.breathe.ui.components.NimbusBuddy
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
 
@@ -37,6 +38,7 @@ fun HomeScreen(
     val apps by viewModel.blockedApps.collectAsState()
     val todayAttempts by viewModel.todayAttempts.collectAsState()
     val todayDeclined by viewModel.todayDeclined.collectAsState()
+    val nimbusStrength by viewModel.nimbusStrength.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.refreshStats()
@@ -92,6 +94,17 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        NimbusBuddy(strength = nimbusStrength)
+                    }
+                }
+
                 item {
                     if (todayAttempts > 0 || todayDeclined > 0) {
                         TodaySummaryCard(

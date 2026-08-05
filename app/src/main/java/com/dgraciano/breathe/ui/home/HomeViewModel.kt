@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
+import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.AppMonitorService
@@ -25,6 +26,7 @@ data class BlockedAppWithStats(
 class HomeViewModel @Inject constructor(
     private val repo: AppRepository,
     private val statsRepo: StatsRepository,
+    private val achievementRepo: AchievementRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -39,6 +41,9 @@ class HomeViewModel @Inject constructor(
 
     private val _todayMinutesSaved = MutableStateFlow(0)
     val todayMinutesSaved: StateFlow<Int> = _todayMinutesSaved
+
+    private val _nimbusStrength = MutableStateFlow(1)
+    val nimbusStrength: StateFlow<Int> = _nimbusStrength
 
     init {
         startService()
@@ -71,6 +76,7 @@ class HomeViewModel @Inject constructor(
             _todayAttempts.value = statsRepo.getTodayTotalAttempts()
             _todayDeclined.value = statsRepo.getTodayDeclined()
             _todayMinutesSaved.value = statsRepo.getTodayMinutesSaved()
+            _nimbusStrength.value = achievementRepo.getUserProgress().currentLevel.index + 1
         }
     }
 }
