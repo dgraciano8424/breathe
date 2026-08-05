@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -40,6 +41,7 @@ fun AppSelectScreen(
 ) {
     val apps by viewModel.apps.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedCount by viewModel.selectedCount.collectAsState()
     val isLoading = apps.isEmpty() && searchQuery.isEmpty()
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
@@ -51,7 +53,7 @@ fun AppSelectScreen(
                     TopAppBar(
                         title = {
                             Text(
-                                "Limit Time Wasters",
+                                "Distractions",
                                 color = BreatheTextPrimary,
                                 fontWeight = FontWeight.Bold
                             )
@@ -97,6 +99,43 @@ fun AppSelectScreen(
                     )
                 }
             },
+            bottomBar = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, BreatheBackground.copy(alpha = 0.95f))
+                            )
+                        )
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Button(
+                        onClick = onDone,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(27.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BreathePrimary,
+                            contentColor = BreatheOnPrimary,
+                            disabledContainerColor = BreatheSurface.copy(alpha = 0.6f),
+                            disabledContentColor = BreatheTextMuted
+                        ),
+                        enabled = selectedCount > 0
+                    ) {
+                        Text(
+                            text = if (selectedCount > 0) {
+                                "Add ${selectedCount} ${if (selectedCount == 1) "app" else "apps"} to Nimbus"
+                            } else {
+                                "Select apps to pause"
+                            },
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            },
             containerColor = Color.Transparent
         ) { padding ->
             if (isLoading) {
@@ -111,7 +150,7 @@ fun AppSelectScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
-                    contentPadding = PaddingValues(bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     item {
                         Text(

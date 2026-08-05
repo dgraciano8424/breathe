@@ -64,7 +64,8 @@ class PauseViewModel @Inject constructor(
                     packageName = currentPackage,
                     appName = currentAppName,
                     outcome = InterventionEvent.OUTCOME_DECLINED,
-                    reason = _selectedReason.value ?: InterventionEvent.REASON_HABIT,
+                    // Left null when the user skipped the reason chips — don't invent one.
+                    reason = _selectedReason.value,
                     minutesSaved = saved
                 )
             )
@@ -81,7 +82,7 @@ class PauseViewModel @Inject constructor(
                     packageName = currentPackage,
                     appName = currentAppName,
                     outcome = InterventionEvent.OUTCOME_OPENED,
-                    reason = _selectedReason.value ?: InterventionEvent.REASON_HABIT
+                    reason = _selectedReason.value
                 )
             )
         }

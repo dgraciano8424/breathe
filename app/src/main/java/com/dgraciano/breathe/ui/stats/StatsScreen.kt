@@ -87,7 +87,8 @@ fun StatsScreen(
                     // Fulfillment Section
                     FulfillmentSection(
                         streak = state.focusStreak,
-                        activity = state.lifeWonBackActivity
+                        activity = state.lifeWonBackActivity,
+                        minutesSaved = state.todayMinutesSaved
                     )
 
                     SectionLabel("Daily Rhythm")
@@ -113,7 +114,11 @@ fun StatsScreen(
                     StatCardLarge(
                         value = "${state.weeklyDeclined}",
                         label = "Total times you chose presence over scrolling",
-                        subtext = "That's roughly ${state.weeklyDeclined * 20} minutes saved this week.",
+                        subtext = if (state.weeklyMinutesSaved > 0) {
+                            "That's ${formatDuration(state.weeklyMinutesSaved)} reclaimed this week."
+                        } else {
+                            "Your reclaimed time this week will appear here."
+                        },
                         accent = BreatheSecondary
                     )
 
@@ -130,7 +135,7 @@ fun StatsScreen(
 }
 
 @Composable
-fun FulfillmentSection(streak: Int, activity: String) {
+fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Focus Streak Card
         Card(
@@ -161,9 +166,20 @@ fun FulfillmentSection(streak: Int, activity: String) {
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text("Time Won Back", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = if (minutesSaved > 0) formatDuration(minutesSaved) else "Nothing yet today",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
+                        color = BreatheSecondary
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "You've earned enough time today to $activity.",
+                        text = if (minutesSaved > 0 && activity.isNotEmpty()) {
+                            "Reclaimed today — enough to $activity."
+                        } else {
+                            "Resist a distraction and your reclaimed time shows up here."
+                        },
                         color = BreatheTextSecondary,
                         fontSize = 14.sp,
                         lineHeight = 20.sp
@@ -180,6 +196,17 @@ fun FulfillmentSection(streak: Int, activity: String) {
             lineHeight = 18.sp,
             modifier = Modifier.padding(horizontal = 4.dp)
         )
+    }
+}
+
+private fun formatDuration(minutes: Int): String {
+    if (minutes <= 0) return "0m"
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
     }
 }
 

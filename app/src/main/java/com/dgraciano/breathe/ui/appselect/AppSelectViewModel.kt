@@ -41,6 +41,11 @@ class AppSelectViewModel @Inject constructor(
         else all.filter { it.appName.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** Number of apps currently marked as distractions, independent of the search filter. */
+    val selectedCount: StateFlow<Int> = _allApps
+        .map { list -> list.count { it.isBlocked } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     init { loadInstalledApps() }
 
     fun loadInstalledApps() {

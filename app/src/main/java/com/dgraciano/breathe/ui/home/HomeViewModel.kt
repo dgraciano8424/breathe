@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
+import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
@@ -42,6 +43,9 @@ class HomeViewModel @Inject constructor(
     private val _todayMinutesSaved = MutableStateFlow(0)
     val todayMinutesSaved: StateFlow<Int> = _todayMinutesSaved
 
+    private val _progress = MutableStateFlow<UserProgress?>(null)
+    val progress: StateFlow<UserProgress?> = _progress
+
     private val _nimbusStrength = MutableStateFlow(1)
     val nimbusStrength: StateFlow<Int> = _nimbusStrength
 
@@ -76,7 +80,9 @@ class HomeViewModel @Inject constructor(
             _todayAttempts.value = statsRepo.getTodayTotalAttempts()
             _todayDeclined.value = statsRepo.getTodayDeclined()
             _todayMinutesSaved.value = statsRepo.getTodayMinutesSaved()
-            _nimbusStrength.value = achievementRepo.getUserProgress().currentLevel.index + 1
+            val userProgress = achievementRepo.getUserProgress()
+            _progress.value = userProgress
+            _nimbusStrength.value = userProgress.currentLevel.index + 1
         }
     }
 }
