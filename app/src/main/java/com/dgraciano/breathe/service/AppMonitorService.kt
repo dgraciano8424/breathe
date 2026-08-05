@@ -30,6 +30,14 @@ class AppMonitorService : Service() {
     private var lastForeground: String? = null
     private lateinit var powerManager: PowerManager
 
+    /**
+     * The detector reports the foreground app continuously, so between startActivity()
+     * and PauseActivity actually resuming the loop would otherwise re-launch the pause
+     * screen several times for the same app.
+     */
+    private var pauseLaunchedFor: String? = null
+    private var pauseLaunchedAt = 0L
+
     override fun onCreate() {
         super.onCreate()
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -51,14 +59,18 @@ class AppMonitorService : Service() {
                             // We ONLY remove the session when moving away
                             sessionApprovalStore.revoke(lastForeground)
                             lastForeground = current
+                            // Moving to a different app makes any pending launch stale.
+                            if (current != pauseLaunchedFor) pauseLaunchedFor = null
                         }
 
                         // Only block if the session hasn't been approved via the pause screen
                         if (!sessionApprovalStore.isApproved(current)) {
-                            if (appRepository.isBlocked(current)) {
+                            if (appRepository.isBlocked(current) && shouldLaunchPause(current)) {
                                 Log.d("BreatheService", "Blocking app: $current")
                                 if (Settings.canDrawOverlays(this@AppMonitorService)) {
                                     // Approval only happens when the user taps "YES" in PauseActivity
+                                    pauseLaunchedFor = current
+                                    pauseLaunchedAt = System.currentTimeMillis()
                                     launchPause(current)
                                 }
                             }
@@ -69,6 +81,10 @@ class AppMonitorService : Service() {
             }
         }
     }
+
+    private fun shouldLaunchPause(packageName: String): Boolean =
+        packageName != pauseLaunchedFor ||
+                System.currentTimeMillis() - pauseLaunchedAt > PAUSE_RELAUNCH_DEBOUNCE_MS
 
     private fun launchPause(packageName: String) {
         val intent = PauseActivity.newIntent(this, packageName)
@@ -105,6 +121,7 @@ class AppMonitorService : Service() {
     companion object {
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "breathe_monitor"
+        private const val PAUSE_RELAUNCH_DEBOUNCE_MS = 3_000L
 
         fun start(context: Context) =
             context.startForegroundService(Intent(context, AppMonitorService::class.java))
