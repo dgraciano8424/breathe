@@ -1,5 +1,6 @@
 package com.dgraciano.breathe.ui.pause
 
+import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.MentalHealthTip
@@ -13,7 +14,9 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -34,11 +37,13 @@ class PauseViewModelTest {
     private lateinit var tipsRepo: MentalHealthTipsRepository
     private lateinit var sessionTimeHelper: SessionTimeHelper
     private lateinit var sessionApprovalStore: SessionApprovalStore
+    private lateinit var appScope: CoroutineScope
     private lateinit var viewModel: PauseViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        appScope = CoroutineScope(testDispatcher)
         quoteRepo = mockk()
         statsRepo = mockk()
         tipsRepo = mockk {
@@ -47,11 +52,14 @@ class PauseViewModelTest {
         }
         sessionTimeHelper = mockk { every { getAvgSessionMinutes(any()) } returns 20 }
         sessionApprovalStore = mockk(relaxed = true)
-        viewModel = PauseViewModel(quoteRepo, statsRepo, tipsRepo, sessionTimeHelper, sessionApprovalStore)
+        viewModel = PauseViewModel(
+            quoteRepo, statsRepo, tipsRepo, sessionTimeHelper, sessionApprovalStore, appScope
+        )
     }
 
     @After
     fun tearDown() {
+        appScope.cancel()
         Dispatchers.resetMain()
     }
 
@@ -183,4 +191,53 @@ class PauseViewModelTest {
         assertEquals(InterventionEvent.OUTCOME_DECLINED, events[0].outcome)
         assertEquals(InterventionEvent.OUTCOME_OPENED, events[1].outcome)
     }
+
+    @Test
+    fun `recordDeclined still persists when the ViewModel scope is cancelled`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        val slot = slot<InterventionEvent>()
+        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+
+        viewModel.init("com.example", "Example App")
+        // PauseActivity calls finish() immediately, clearing the ViewModel.
+        viewModel.viewModelScope.cancel()
+        viewModel.recordDeclined()
+
+        assertEquals(InterventionEvent.OUTCOME_DECLINED, slot.captured.outcome)
+        assertEquals("com.example", slot.captured.packageName)
+        coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
+    }
+
+    @Test
+    fun `recordOpened still persists when the ViewModel scope is cancelled`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        val slot = slot<InterventionEvent>()
+        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+
+        viewModel.init("com.example", "Example App")
+        viewModel.viewModelScope.cancel()
+        viewModel.recordOpened()
+
+        assertEquals(InterventionEvent.OUTCOME_OPENED, slot.captured.outcome)
+        coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
+    }
+
+    @Test
+    fun `recordDeclined captures the target app before a retargeting init can change it`() =
+        runTest {
+            coEvery { quoteRepo.getRandomQuote() } returns null
+            coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+            val events = mutableListOf<InterventionEvent>()
+            coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
+
+            viewModel.init("com.first", "First App")
+            viewModel.recordDeclined()
+            // onNewIntent can retarget the shared ViewModel at any point.
+            viewModel.init("com.second", "Second App")
+
+            assertEquals("com.first", events.single().packageName)
+            assertEquals("First App", events.single().appName)
+        }
 }
