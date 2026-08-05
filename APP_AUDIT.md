@@ -1,75 +1,83 @@
 # Breathe Application Audit
 
 **Audit date:** 2026-07-21
+**Last revised:** 2026-08-05 — blockers 2, 3, and 5 resolved; verification now runs against a configured SDK.
 **Scope:** all production Kotlin/Compose source, unit tests, Android manifest, Gradle configuration, resources, `README.md`, and `.planning/codebase/` documents.
 
 ## Verdict
 
-The app has a coherent MVVM/Repository/Hilt/Room structure, but it is **not yet production-ready**. The documented core flow is implemented, along with stats, achievements, icons, and app selection, but several lifecycle and Android platform issues can make interception or event recording unreliable. The checked-in plans also describe older code and dependency versions.
+The app has a coherent MVVM/Repository/Hilt/Room structure. Since the original audit, the data-integrity and detection blockers have been fixed and the test suite has been brought back in sync with production APIs. It is **still not production-ready**, for one reason above all others: the core interception mechanism is not guaranteed to work on Android 10+. That is a product/platform decision, not a code cleanup.
 
 ## Blockers
 
-1. **Background activity launch is unreliable on Android 10+.** `AppMonitorService` directly calls `startActivity()` from a foreground service. A foreground service is not a general exemption from background-activity-start restrictions, so the core pause screen may be blocked on modern devices. This needs a product/platform decision: a policy-compliant accessibility service, a supported device-management/app-control API, or a notification-driven interaction.
-   - `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:64`
+1. **Background activity launch is unreliable on Android 10+.** `AppMonitorService` directly calls `startActivity()` from a foreground service. A foreground service is not a general exemption from background-activity-start restrictions, so the core pause screen may be blocked on modern devices. This needs a product/platform decision: a policy-compliant accessibility service, a `SYSTEM_ALERT_WINDOW` overlay instead of an Activity, a supported device-management/app-control API, or a notification-driven interaction.
+   - `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:93`
+   - **Verify on a physical device before choosing a direction.** Everything else in the interception path is now correct, so this is the only thing standing between the app and a working release.
 
-2. **Stats writes can be cancelled.** `PauseActivity` calls `recordOpened()` or `recordDeclined()` and immediately finishes. Those methods launch work in `viewModelScope`; activity teardown clears the ViewModel and can cancel the Room insert.
-   - `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseActivity.kt:57`
-   - `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseViewModel.kt:57`
+2. ~~**Stats writes can be cancelled.**~~ **Resolved** (`7da8b3e`). Both writes now run on an injected `@ApplicationScope` (`SupervisorJob + Dispatchers.IO`), so they survive `PauseActivity` finishing and the ViewModel being cleared. The target package/app/reason are captured before launching, since `onNewIntent` can retarget the ViewModel mid-write. Three regression tests cover it.
+   - Remaining gap: the write is fire-and-forget, so a Room failure is still silent — no retry and no user-visible error.
 
-3. **Foreground detection loses the current app after five seconds.** The detector only scans recent `MOVE_TO_FOREGROUND` events. After service restart, delayed polling, screen unlock, or late permission grant, it can return `null` indefinitely until another app transition.
-   - `app/src/main/java/com/dgraciano/breathe/service/ForegroundAppDetector.kt:10`
+3. ~~**Foreground detection loses the current app after five seconds.**~~ **Resolved** (`7364025`). `ForegroundAppDetector` remembers the last app it saw resume and reports it until a newer transition replaces it. Cold start scans back 24 hours to recover an already-open app; later scans are incremental with a 1s overlap. The cursor only advances on a non-empty result, so usage access granted after the first poll still recovers, and a 5s throttle bounds the wide-scan path. Now `@Singleton`, since the cached state depends on a single instance.
 
-4. **A 28-day device event scan runs from the UI action path.** `SessionTimeHelper` scans usage history synchronously when the user declines, which can stall the main thread; the enclosing coroutine is then vulnerable to the teardown race above.
-   - `app/src/main/java/com/dgraciano/breathe/service/SessionTimeHelper.kt:18`
-   - `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseViewModel.kt:57`
+4. **A 28-day device event scan runs from the UI action path.** **Partially addressed** (`7da8b3e`) — it no longer blocks the main thread, because the enclosing coroutine moved from `viewModelScope` (which dispatches to `Main.immediate`) to the IO-backed application scope. Still open: the scan's cost is unbounded, and `SessionTimeHelper`'s cache has no invalidation, so a user's average session time is frozen at whatever it was the first time they declined that app.
+   - `app/src/main/java/com/dgraciano/breathe/service/SessionTimeHelper.kt:16`
 
-5. **The unit-test suite is out of sync with production APIs.** `PauseViewModelTest` constructs the ViewModel with the old dependency list and asserts obsolete reason behavior. `ForegroundAppDetectorTest` mocks `queryUsageStats`, while production now calls `queryEvents`.
-   - `app/src/test/java/com/dgraciano/breathe/ui/pause/PauseViewModelTest.kt:34`
-   - `app/src/test/java/com/dgraciano/breathe/service/ForegroundAppDetectorTest.kt:23`
+5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 50 tests across 5 classes and passes.
 
 ## High-priority corrections
 
-- Make event recording a suspend operation and await successful persistence before navigation/finish; show a brief in-progress state and handle failure.
-- Move usage-history analysis to `Dispatchers.IO`, bound its cost, and apply time-based cache invalidation.
-- Redesign foreground detection around a durable cursor/last-known state and test restart, unlock, delayed-poll, and permission-grant scenarios.
-- Add an idempotent `onStartCommand()` with an explicitly chosen restart policy. The current service only starts monitoring from `onCreate()`.
+Open:
+
+- Add an idempotent `onStartCommand()` with an explicitly chosen restart policy. The service still only starts monitoring from `onCreate()`.
 - Cache the blocked package set in the service instead of performing a Room `EXISTS` query every 500 ms; back off when the screen is off, permission is absent, or the blocked list is empty.
+   - `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:68`
 - Remove `QUERY_ALL_PACKAGES` if launcher-intent visibility is sufficient; declare a narrow `<queries>` launcher intent instead. The broad permission creates Play policy risk.
-- Disable backup or exclude the Room database. It stores targeted apps, reasons, timestamps, and intervention outcomes.
+   - `app/src/main/AndroidManifest.xml:11`
+- Disable backup or exclude the Room database. `android:allowBackup="true"` is still set, and the database stores targeted apps, reasons, timestamps, and intervention outcomes.
+   - `app/src/main/AndroidManifest.xml:22`
 - Gate OkHttp logging to debug builds.
-- Make quote replacement transactional and reject empty/invalid API results so a failed refresh cannot erase the cache.
-- Use persisted `minutesSaved` totals consistently. `StatsViewModel` still estimates `declines * 20`, contradicting recorded session estimates.
+   - `app/src/main/java/com/dgraciano/breathe/di/NetworkModule.kt:21`
+- Make quote replacement transactional and reject empty/invalid API results so a failed refresh cannot erase the cache. `deleteAll()` and `insertAll()` are still separate calls.
+   - `app/src/main/java/com/dgraciano/breathe/data/repository/QuoteRepository.kt:22`
 - Make the pause content scroll/adapt on small screens, landscape, and large font scales; respect reduced-motion settings for infinite animations.
 - Add explicit loading, empty, and error states to the app picker and other ViewModels.
 - Remove the unused WorkManager dependency unless periodic quote refresh is implemented.
+   - `app/build.gradle.kts:75`
+- Surface write failures from the intervention-event path rather than swallowing them (see blocker 2).
+
+Done:
+
+- ~~Make event recording survive navigation/teardown.~~ Done via the application scope (`7da8b3e`). Note this diverges from the original recommendation: rather than awaiting persistence behind an in-progress state, the write is detached so the user's Yes/No stays instant. Blocking the exit on a Room write plus a usage scan was the wrong trade for this interaction.
+- ~~Move usage-history analysis to `Dispatchers.IO`.~~ Done (`7da8b3e`); bounding its cost and invalidating the cache remain open under blocker 4.
+- ~~Redesign foreground detection around a durable cursor/last-known state and test restart, unlock, delayed-poll, and permission-grant scenarios.~~ Done (`7364025`), with tests for each scenario.
+- ~~Use persisted `minutesSaved` totals consistently.~~ Done (`c148554`). `StatsViewModel` and `HomeScreen` both read recorded per-event minutes; the `declines * 20` estimate is gone.
 
 ## Plan traceability
 
 | Documented item | Implementation status | Notes |
 |---|---|---|
 | Usage-access onboarding | Implemented | Returning-user behavior exists but plans describe older routing details. |
-| Foreground monitoring | Implemented with blockers | Polling exists; modern background-launch restrictions and stale detection undermine reliability. |
+| Foreground monitoring | Implemented with one blocker | Detection is now durable; modern background-launch restrictions remain unresolved. |
 | Blocked-app picker | Implemented | Broad package visibility and eager Drawable loading should be tightened. |
-| Pause/breathing flow | Implemented with blockers | UI exists; persistence race and small-screen accessibility remain. |
+| Pause/breathing flow | Implemented with blockers | Persistence race fixed; small-screen accessibility remains. |
 | Quote API + Room cache | Implemented | No refresh TTL; replacement is non-transactional. |
-| Stats screen | Implemented | README still marks it unfinished; calculations are internally inconsistent. |
+| Stats screen | Implemented | Calculations now consistent with recorded data. |
 | Achievements | Implemented | Missing from older architecture maps. |
-| App icons/launch visuals | Implemented | README still marks icons unfinished. |
+| App icons/launch visuals | Implemented | — |
 | Per-app custom pause duration | Not implemented | Roadmap item remains open. |
 | Widget | Not implemented | Roadmap item remains open. |
-| Play Store release readiness | Not complete | Background-launch design, package visibility, backup/privacy, tests, and release verification block it. |
+| Play Store release readiness | Not complete | Background-launch design, package visibility, and backup/privacy block it. |
 
 ## Documentation drift
 
-- `README.md` roadmap incorrectly marks stats and app icons as unfinished.
-- `.planning/codebase/TESTING.md` says no tests exist, but five test files are present.
-- `.planning/codebase/STACK.md` documents older AGP/Kotlin/Hilt/KSP versions and a different Gradle heap size.
-- `.planning/codebase/ARCHITECTURE.md`, `STRUCTURE.md`, and `CONCERNS.md` omit newer achievements/session-time features or refer to superseded detector behavior.
+- `.planning/codebase/STACK.md` documents AGP 8.4.0, Kotlin 1.9.24, Hilt 2.51.1, and KSP 1.9.24-1.0.20. The project is on AGP 9.2.1, Kotlin 2.2.10, Hilt 2.60.1, and KSP 2.2.10-2.0.2.
+- `.planning/codebase/ARCHITECTURE.md`, `STRUCTURE.md`, and `CONCERNS.md` omit newer achievements/session-time features and predate the application-scope and detector changes.
+- `.planning/codebase/TESTING.md` is broadly accurate; its noted gap (no Compose UI test dependency) still holds.
+- `README.md` roadmap is now accurate — the earlier claim that it mismarked stats and app icons no longer applies.
 
 ## Verification status
 
-- Git working tree was clean before this audit.
-- A temporary JDK 17 successfully started Gradle.
-- `./gradlew test` could not reach compilation because no Android SDK is installed/configured in this environment (`SDK location not found`).
-- Installing the SDK requires acceptance of Google's SDK license, so it was not performed automatically.
-- Static review already proves the two test API mismatches above; a full `test lint assembleDebug` run is still required after an Android SDK 34 installation is configured.
+- `./gradlew testDebugUnitTest assembleDebug` passes: 50 tests across 5 classes, debug APK builds.
+- Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
+- The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
+- Still unverified on hardware: no instrumented or on-device run has been performed, which is exactly what blocker 1 needs.
