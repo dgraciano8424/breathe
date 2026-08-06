@@ -1,7 +1,7 @@
 # Breathe Application Audit
 
 **Audit date:** 2026-07-21
-**Last revised:** 2026-08-06 — blockers 2 through 5 resolved; blocker 1 addressed via an overlay but unverified on hardware. Verification now runs against a configured SDK.
+**Last revised:** 2026-08-06 — every original blocker and correction now has a fix in the tree; blocker 1 remains unverified on hardware. Per-app pause duration implemented.
 **Scope:** all production Kotlin/Compose source, unit tests, Android manifest, Gradle configuration, resources, `README.md`, and `.planning/codebase/` documents.
 
 ## Verdict
@@ -20,37 +20,32 @@ It is **not yet demonstrably working**, which is a different claim from the earl
    - Trade-off accepted, not eliminated: drawing over other apps carries its own Play review scrutiny. That is a policy risk taken in exchange for a technical one.
 
 2. ~~**Stats writes can be cancelled.**~~ **Resolved** (`7da8b3e`). Both writes now run on an injected `@ApplicationScope` (`SupervisorJob + Dispatchers.IO`), so they survive `PauseActivity` finishing and the ViewModel being cleared. The target package/app/reason are captured before launching, since `onNewIntent` can retarget the ViewModel mid-write. Three regression tests cover it.
-   - Remaining gap: the write is fire-and-forget, so a Room failure is still silent — no retry and no user-visible error.
+   - A failing write is now caught and logged rather than escaping into the application scope. It still cannot be retried or shown to the user, because the pause screen is gone by then.
 
 3. ~~**Foreground detection loses the current app after five seconds.**~~ **Resolved** (`7364025`). `ForegroundAppDetector` remembers the last app it saw resume and reports it until a newer transition replaces it. Cold start scans back 24 hours to recover an already-open app; later scans are incremental with a 1s overlap. The cursor only advances on a non-empty result, so usage access granted after the first poll still recovers, and a 5s throttle bounds the wide-scan path. Now `@Singleton`, since the cached state depends on a single instance.
 
 4. ~~**A 28-day device event scan runs from the UI action path.**~~ **Resolved** (`7da8b3e`, `3383360`). The scan moved off the main thread when the enclosing coroutine moved from `viewModelScope` (which dispatches to `Main.immediate`) to the IO-backed application scope. Its cost is now bounded — a 7-day window, since the platform only retains usage events for about a week, averaged over the 50 newest sessions — and cached averages carry a 6-hour TTL, so a user's session time is no longer frozen at whatever it was the first time they declined that app. The cache is a `ConcurrentHashMap`, because declines now share an application scope. `SessionTimeHelperTest` covers it.
 
-5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 60 tests across 6 classes and passes.
+5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 65 tests across 6 classes and passes.
 
 ## High-priority corrections
 
 Open:
 
-- Add an idempotent `onStartCommand()` with an explicitly chosen restart policy. The service still only starts monitoring from `onCreate()`.
-- Cache the blocked package set in the service instead of performing a Room `EXISTS` query every 500 ms; back off when the screen is off, permission is absent, or the blocked list is empty.
-   - `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:68`
-- Remove `QUERY_ALL_PACKAGES` if launcher-intent visibility is sufficient; declare a narrow `<queries>` launcher intent instead. The broad permission creates Play policy risk.
-   - `app/src/main/AndroidManifest.xml:11`
-- Disable backup or exclude the Room database. `android:allowBackup="true"` is still set, and the database stores targeted apps, reasons, timestamps, and intervention outcomes.
-   - `app/src/main/AndroidManifest.xml:22`
-- Gate OkHttp logging to debug builds.
-   - `app/src/main/java/com/dgraciano/breathe/di/NetworkModule.kt:21`
-- Make quote replacement transactional and reject empty/invalid API results so a failed refresh cannot erase the cache. `deleteAll()` and `insertAll()` are still separate calls.
-   - `app/src/main/java/com/dgraciano/breathe/data/repository/QuoteRepository.kt:22`
-- Make the pause content scroll/adapt on small screens, landscape, and large font scales; respect reduced-motion settings for infinite animations.
-- Add explicit loading, empty, and error states to the app picker and other ViewModels.
-- Remove the unused WorkManager dependency unless periodic quote refresh is implemented.
-   - `app/build.gradle.kts:75`
-- Surface write failures from the intervention-event path rather than swallowing them (see blocker 2).
+- Nothing outstanding from the original audit. What remains is device verification (blocker 1) and the roadmap items below.
 
 Done:
 
+- ~~Add an idempotent `onStartCommand()` with an explicitly chosen restart policy.~~ Done. Returns `START_STICKY` and no-ops when the monitor loop is already running, so a redelivered start command cannot stack a second loop.
+- ~~Cache the blocked package set in the service; back off when idle.~~ Done. The service collects the blocked-apps Flow into an in-memory set instead of running a Room `EXISTS` query twice a second, and drops to a 3s poll when the screen is off, the overlay is up, or nothing is monitored.
+- ~~Remove `QUERY_ALL_PACKAGES`.~~ Done. Replaced with a `<queries>` launcher-intent filter, which is all the picker ever needed. This removes the restricted-permission declaration that would have required a Play justification.
+- ~~Disable backup or exclude the Room database.~~ Done. `allowBackup="false"`, plus explicit `backup_rules.xml` and `data_extraction_rules.xml` excluding the database from cloud backup and device transfer.
+- ~~Gate OkHttp logging to debug builds.~~ Done, behind `BuildConfig.DEBUG` (which required enabling the `buildConfig` build feature).
+- ~~Make quote replacement transactional and reject empty/invalid API results.~~ Done via `QuoteDao.replaceAll()` under `@Transaction`, with null/blank entries filtered and empty results rejected before the swap. The DTO fields are now nullable, which is what Gson actually produces.
+- ~~Make the pause content scroll and respect reduced motion.~~ Done. The pause column scrolls, and a shared `rememberReducedMotion()` holds the breathing rings and Nimbus still when the system animation scale is zero.
+- ~~Add explicit loading, empty, and error states to the app picker.~~ Done. `isLoading` and `errorMessage` are real state rather than inferred from an empty list, with a retry action.
+- ~~Remove the unused WorkManager dependency.~~ Done, from both the build file and the version catalog.
+- ~~Surface write failures from the intervention-event path.~~ Done, as logging. The screen is gone by the time these run, so there is no user to notify and nothing to retry into; the goal was making a missing statistic diagnosable rather than invisible.
 - ~~Make event recording survive navigation/teardown.~~ Done via the application scope (`7da8b3e`). Note this diverges from the original recommendation: rather than awaiting persistence behind an in-progress state, the write is detached so the user's Yes/No stays instant. Blocking the exit on a Room write plus a usage scan was the wrong trade for this interaction.
 - ~~Move usage-history analysis to `Dispatchers.IO`, bound its cost, and apply time-based cache invalidation.~~ Done (`7da8b3e`, `3383360`).
 - ~~Redesign foreground detection around a durable cursor/last-known state and test restart, unlock, delayed-poll, and permission-grant scenarios.~~ Done (`7364025`), with tests for each scenario.
@@ -68,7 +63,7 @@ Done:
 | Stats screen | Implemented | Calculations now consistent with recorded data. |
 | Achievements | Implemented | Missing from older architecture maps. |
 | App icons/launch visuals | Implemented | — |
-| Per-app custom pause duration | Not implemented | Roadmap item remains open. |
+| Per-app custom pause duration | Implemented | Stored per blocked app (schema v4), set from the home list, enforced by a countdown that gates the "continue" action. |
 | Widget | Not implemented | Roadmap item remains open. |
 | Play Store release readiness | Not complete | Device verification of the overlay, package visibility, and backup/privacy block it. |
 
@@ -81,7 +76,7 @@ Done:
 
 ## Verification status
 
-- `./gradlew testDebugUnitTest assembleDebug` passes: 60 tests across 6 classes, debug APK builds.
+- `./gradlew testDebugUnitTest assembleDebug` passes: 65 tests across 6 classes, debug APK builds.
 - Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
 - The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
 - Still unverified on hardware: no instrumented or on-device run has been performed. This now matters more than it did, because the overlay rewrite of the interception path rests entirely on it. The unit suite says nothing about whether the pause screen appears.

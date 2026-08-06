@@ -1,8 +1,10 @@
 package com.dgraciano.breathe.ui.pause
 
 import androidx.lifecycle.viewModelScope
+import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
+import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.QuoteRepository
@@ -37,6 +39,7 @@ class PauseViewModelTest {
     private lateinit var tipsRepo: MentalHealthTipsRepository
     private lateinit var sessionTimeHelper: SessionTimeHelper
     private lateinit var sessionApprovalStore: SessionApprovalStore
+    private lateinit var appRepo: AppRepository
     private lateinit var appScope: CoroutineScope
     private lateinit var viewModel: PauseViewModel
 
@@ -52,8 +55,17 @@ class PauseViewModelTest {
         }
         sessionTimeHelper = mockk { every { getAvgSessionMinutes(any()) } returns 20 }
         sessionApprovalStore = mockk(relaxed = true)
+        appRepo = mockk {
+            coEvery { getPauseSeconds(any()) } returns BlockedApp.DEFAULT_PAUSE_SECONDS
+        }
         viewModel = PauseViewModel(
-            quoteRepo, statsRepo, tipsRepo, sessionTimeHelper, sessionApprovalStore, appScope
+            quoteRepo = quoteRepo,
+            statsRepo = statsRepo,
+            appRepo = appRepo,
+            tipsRepo = tipsRepo,
+            sessionTimeHelper = sessionTimeHelper,
+            sessionApprovalStore = sessionApprovalStore,
+            appScope = appScope
         )
     }
 
@@ -222,6 +234,44 @@ class PauseViewModelTest {
 
         assertEquals(InterventionEvent.OUTCOME_OPENED, slot.captured.outcome)
         coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
+    }
+
+    @Test
+    fun `init loads the per-app pause duration`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { appRepo.getPauseSeconds("com.slow") } returns 60
+
+        viewModel.init("com.slow", "Slow App")
+
+        assertEquals(60, viewModel.pauseSeconds.value)
+    }
+
+    @Test
+    fun `init resets the duration so a retargeted pause does not inherit it`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { appRepo.getPauseSeconds("com.slow") } returns 60
+        coEvery { appRepo.getPauseSeconds("com.quick") } returns 5
+
+        viewModel.init("com.slow", "Slow App")
+        viewModel.init("com.quick", "Quick App")
+
+        assertEquals(5, viewModel.pauseSeconds.value)
+    }
+
+    @Test
+    fun `a failed write is swallowed rather than crashing the app scope`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { statsRepo.recordEvent(any()) } throws IllegalStateException("disk full")
+
+        viewModel.init("com.example", "Example App")
+        // The pause screen is already gone; a throw here would reach no user.
+        viewModel.recordDeclined()
+        viewModel.recordOpened()
+
+        coVerify(exactly = 2) { statsRepo.recordEvent(any()) }
     }
 
     @Test

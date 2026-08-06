@@ -205,7 +205,10 @@ fun HomeScreen(
                         BlockedAppRow(
                             app = appWithStats.app,
                             usageMinutes = appWithStats.usageMinutes,
-                            onRemove = { viewModel.removeApp(appWithStats.app) }
+                            onRemove = { viewModel.removeApp(appWithStats.app) },
+                            onPauseSecondsChange = { seconds ->
+                                viewModel.setPauseSeconds(appWithStats.app.packageName, seconds)
+                            }
                         )
                     }
                 }
@@ -399,23 +402,35 @@ private fun SummaryItem(value: String, label: String) {
 }
 
 @Composable
-private fun BlockedAppRow(app: BlockedApp, usageMinutes: Int, onRemove: () -> Unit) {
+private fun BlockedAppRow(
+    app: BlockedApp,
+    usageMinutes: Int,
+    onRemove: () -> Unit,
+    onPauseSecondsChange: (Int) -> Unit
+) {
     ListItem(
         headlineContent = {
             Text(app.appName, color = BreatheTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         },
         supportingContent = {
-            Text(
-                text = formatUsage(usageMinutes),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (usageMinutes > 60) Color(0xFFFF8A80) else BreatheTextSecondary
-            )
+            Column {
+                Text(
+                    text = formatUsage(usageMinutes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (usageMinutes > 60) Color(0xFFFF8A80) else BreatheTextSecondary
+                )
+                Spacer(Modifier.height(6.dp))
+                PauseDurationPicker(
+                    selected = app.pauseSeconds,
+                    onSelect = onPauseSecondsChange
+                )
+            }
         },
         trailingContent = {
             IconButton(onClick = onRemove) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Remove",
+                    contentDescription = "Remove ${app.appName}",
                     tint = BreatheTextMuted
                 )
             }
@@ -423,6 +438,41 @@ private fun BlockedAppRow(app: BlockedApp, usageMinutes: Int, onRemove: () -> Un
         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
     HorizontalDivider(color = BreatheDivider, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+/** Row of pause lengths; the selected one is filled in. */
+@Composable
+private fun PauseDurationPicker(selected: Int, onSelect: (Int) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Pause",
+            fontSize = 11.sp,
+            color = BreatheTextMuted
+        )
+        BlockedApp.PAUSE_OPTIONS.forEach { seconds ->
+            val isSelected = seconds == selected
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isSelected) BreathePrimary.copy(alpha = 0.22f) else Color.Transparent
+                    )
+                    .clickable { onSelect(seconds) }
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "${seconds}s",
+                    fontSize = 11.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isSelected) BreathePrimary else BreatheTextSecondary
+                )
+            }
+        }
+    }
 }
 
 private fun formatUsage(minutes: Int): String {

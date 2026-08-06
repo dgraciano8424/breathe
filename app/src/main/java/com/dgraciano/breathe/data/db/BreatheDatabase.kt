@@ -10,7 +10,7 @@ import com.dgraciano.breathe.data.model.Quote
 
 @Database(
     entities = [BlockedApp::class, Quote::class, InterventionEvent::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class BreatheDatabase : RoomDatabase() {
@@ -38,6 +38,17 @@ abstract class BreatheDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
                     "ALTER TABLE intervention_events ADD COLUMN minutesSaved INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Existing rows inherit the default, so pauses are unchanged until the
+                // user picks a duration for that app.
+                database.execSQL(
+                    "ALTER TABLE blocked_apps ADD COLUMN pauseSeconds INTEGER NOT NULL " +
+                            "DEFAULT ${BlockedApp.DEFAULT_PAUSE_SECONDS}"
                 )
             }
         }

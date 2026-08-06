@@ -39,36 +39,44 @@ fun NimbusBuddy(
     caption: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val reducedMotion = rememberReducedMotion()
     val transition = rememberInfiniteTransition(label = "nimbus")
 
-    val pulse by transition.animateFloat(
+    val animatedPulse by transition.animateFloat(
         initialValue = 0.96f, targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
             animation = tween(3400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ), label = "pulse"
     )
-    val drift by transition.animateFloat(
+    val animatedDrift by transition.animateFloat(
         initialValue = -1f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(4200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ), label = "drift"
     )
-    val windPhase by transition.animateFloat(
+    val animatedWindPhase by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(2600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ), label = "wind"
     )
-    val shimmer by transition.animateFloat(
+    val animatedShimmer by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(5000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ), label = "shimmer"
     )
+
+    // Held at a pleasant mid-point when the user has asked the system for no motion.
+    // Nimbus still renders in full, it just stops moving.
+    val pulse = if (reducedMotion) 1f else animatedPulse
+    val drift = if (reducedMotion) 0f else animatedDrift
+    val windPhase = if (reducedMotion) 0.5f else animatedWindPhase
+    val shimmer = if (reducedMotion) 0.35f else animatedShimmer
 
     // Deliberately compact at low levels so it reads as a companion, not a centrepiece,
     // then grows as the user progresses.

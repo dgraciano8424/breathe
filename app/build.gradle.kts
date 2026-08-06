@@ -35,6 +35,8 @@ android {
 
     buildFeatures {
         compose = true
+        // Needed so network logging can be gated to debug builds.
+        buildConfig = true
     }
 
     testOptions {
@@ -72,7 +74,6 @@ dependencies {
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp.logging)
 
-    implementation(libs.work.runtime)
     implementation(libs.coroutines)
 
     // Used directly by the pause overlay, which has to supply the ViewTree owners

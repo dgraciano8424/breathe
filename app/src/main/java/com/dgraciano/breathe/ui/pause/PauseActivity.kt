@@ -45,6 +45,7 @@ class PauseActivity : ComponentActivity() {
                 val selectedReason by viewModel.selectedReason.collectAsState()
                 val tip by viewModel.tip.collectAsState()
                 val activity by viewModel.alternativeActivity.collectAsState()
+                val pauseSeconds by viewModel.pauseSeconds.collectAsState()
 
                 PauseScreen(
                     appName = appName,
@@ -53,6 +54,7 @@ class PauseActivity : ComponentActivity() {
                     tip = tip,
                     alternativeActivity = activity,
                     selectedReason = selectedReason,
+                    pauseSeconds = pauseSeconds,
                     onReasonSelected = viewModel::selectReason,
                     onYes = {
                         viewModel.recordOpened()

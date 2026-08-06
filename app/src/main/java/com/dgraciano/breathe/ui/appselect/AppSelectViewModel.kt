@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
@@ -46,41 +47,60 @@ class AppSelectViewModel @Inject constructor(
         .map { list -> list.count { it.isBlocked } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    /** Explicit rather than inferred from an empty list, which cannot tell the
+     *  difference between "still loading", "nothing installed", and "the query failed". */
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage
+
     init { loadInstalledApps() }
 
     fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
-            val pm = context.packageManager
-            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val alreadyBlocked = repo.getAllBlockedPackageNames().toSet()
-            
-            // Get stats for the last 7 days
-            val now = System.currentTimeMillis()
-            val start = now - TimeUnit.DAYS.toMillis(7)
-            val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
-            
-            // Get ALL launcher activities
-            val mainIntent = Intent(Intent.ACTION_MAIN, null)
-            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
-            
-            val installed = resolveInfos.map { info ->
-                val pkg = info.activityInfo.packageName
-                val totalTime = stats[pkg]?.totalTimeInForeground ?: 0L
-                InstalledApp(
-                    packageName = pkg,
-                    appName = info.loadLabel(pm).toString(),
-                    icon = try { info.loadIcon(pm) } catch (e: Exception) { null },
-                    usageTimeMinutes = (totalTime / 60000).toInt(),
-                    isBlocked = pkg in alreadyBlocked
-                )
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                _allApps.value = queryInstalledApps()
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not list installed apps", e)
+                _errorMessage.value = "Couldn't load your apps. Pull to try again."
+            } finally {
+                _isLoading.value = false
             }
+        }
+    }
+
+    private suspend fun queryInstalledApps(): List<InstalledApp> {
+        val pm = context.packageManager
+        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val alreadyBlocked = repo.getAllBlockedPackageNames().toSet()
+
+        // Get stats for the last 7 days
+        val now = System.currentTimeMillis()
+        val start = now - TimeUnit.DAYS.toMillis(7)
+        val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
+
+        // Get ALL launcher activities
+        val mainIntent = Intent(Intent.ACTION_MAIN, null)
+        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+        val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+
+        return resolveInfos.map { info ->
+            val pkg = info.activityInfo.packageName
+            val totalTime = stats[pkg]?.totalTimeInForeground ?: 0L
+            InstalledApp(
+                packageName = pkg,
+                appName = info.loadLabel(pm).toString(),
+                icon = runCatching { info.loadIcon(pm) }.getOrNull(),
+                usageTimeMinutes = (totalTime / 60000).toInt(),
+                isBlocked = pkg in alreadyBlocked
+            )
+        }
             .distinctBy { it.packageName }
             .filter { it.packageName != context.packageName }
             .sortedByDescending { it.usageTimeMinutes }
-            
-            _allApps.value = installed
-        }
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -101,5 +121,9 @@ class AppSelectViewModel @Inject constructor(
                 else it
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "AppSelectViewModel"
     }
 }

@@ -13,4 +13,11 @@ class AppRepository @Inject constructor(private val dao: BlockedAppDao) {
     suspend fun unblockApp(app: BlockedApp) = dao.delete(app)
     suspend fun isBlocked(packageName: String) = dao.isBlocked(packageName)
     suspend fun getAllBlockedPackageNames() = dao.getAllPackageNames()
+
+    /** Falls back to the default when the app is not blocked or has no stored value. */
+    suspend fun getPauseSeconds(packageName: String): Int =
+        dao.getPauseSeconds(packageName) ?: BlockedApp.DEFAULT_PAUSE_SECONDS
+
+    suspend fun setPauseSeconds(packageName: String, seconds: Int) =
+        dao.setPauseSeconds(packageName, seconds)
 }

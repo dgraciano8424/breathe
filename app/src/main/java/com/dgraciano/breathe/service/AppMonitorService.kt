@@ -18,6 +18,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @AndroidEntryPoint
 class AppMonitorService : Service() {
@@ -39,46 +40,85 @@ class AppMonitorService : Service() {
     private var pauseLaunchedFor: String? = null
     private var pauseLaunchedAt = 0L
 
+    /**
+     * Mirrors the blocked table in memory. The loop runs twice a second, and a Room
+     * `EXISTS` query at that rate is pure overhead when the answer almost never changes.
+     */
+    @Volatile
+    private var blockedPackages: Set<String> = emptySet()
+
+    private var monitorJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         startForeground(NOTIF_ID, buildNotification())
+        observeBlockedApps()
         startMonitoring()
         Log.d("BreatheService", "Service created and monitoring started")
     }
 
-    private fun startMonitoring() {
+    /**
+     * Idempotent: the system re-delivers the start command on restart, and the user can
+     * hit "start monitoring" repeatedly. START_STICKY because this service is the
+     * product — if it is killed, it should come back without waiting for the user.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startMonitoring()
+        return START_STICKY
+    }
+
+    private fun observeBlockedApps() {
         scope.launch {
+            appRepository.getBlockedApps().collect { apps ->
+                blockedPackages = apps.map { it.packageName }.toSet()
+            }
+        }
+    }
+
+    private fun startMonitoring() {
+        if (monitorJob?.isActive == true) return
+        monitorJob = scope.launch {
             while (isActive) {
                 // The overlay draws over the blocked app without displacing it, so the
                 // detector keeps reporting that app while the pause screen is up.
-                if (powerManager.isInteractive && !pauseOverlayHost.isShowing) {
-                    val current = detector.getCurrentApp()
+                val idle = !powerManager.isInteractive ||
+                        pauseOverlayHost.isShowing ||
+                        blockedPackages.isEmpty()
 
-                    // If we switched apps, reset the approved session
-                    if (current != null && current != packageName) {
-                        if (current != lastForeground) {
-                            Log.d("BreatheService", "Foreground app changed: $current")
-                            // We ONLY remove the session when moving away
-                            sessionApprovalStore.revoke(lastForeground)
-                            lastForeground = current
-                            // Moving to a different app makes any pending launch stale.
-                            if (current != pauseLaunchedFor) pauseLaunchedFor = null
-                        }
+                if (idle) {
+                    // Nothing to detect: back off hard rather than spinning the usage
+                    // query while the screen is off or no apps are being monitored.
+                    delay(IDLE_POLL_INTERVAL)
+                    continue
+                }
 
-                        // Only block if the session hasn't been approved via the pause screen
-                        if (!sessionApprovalStore.isApproved(current)) {
-                            if (appRepository.isBlocked(current) && shouldLaunchPause(current)) {
-                                Log.d("BreatheService", "Blocking app: $current")
-                                // Approval only happens when the user taps "YES".
-                                pauseLaunchedFor = current
-                                pauseLaunchedAt = System.currentTimeMillis()
-                                launchPause(current)
-                            }
-                        }
+                val current = detector.getCurrentApp()
+
+                // If we switched apps, reset the approved session
+                if (current != null && current != packageName) {
+                    if (current != lastForeground) {
+                        Log.d("BreatheService", "Foreground app changed: $current")
+                        // We ONLY remove the session when moving away
+                        sessionApprovalStore.revoke(lastForeground)
+                        lastForeground = current
+                        // Moving to a different app makes any pending launch stale.
+                        if (current != pauseLaunchedFor) pauseLaunchedFor = null
+                    }
+
+                    // Only block if the session hasn't been approved via the pause screen
+                    if (!sessionApprovalStore.isApproved(current) &&
+                        current in blockedPackages &&
+                        shouldLaunchPause(current)
+                    ) {
+                        Log.d("BreatheService", "Blocking app: $current")
+                        // Approval only happens when the user taps "YES".
+                        pauseLaunchedFor = current
+                        pauseLaunchedAt = System.currentTimeMillis()
+                        launchPause(current)
                     }
                 }
-                delay(500.milliseconds)
+                delay(ACTIVE_POLL_INTERVAL)
             }
         }
     }
@@ -142,6 +182,8 @@ class AppMonitorService : Service() {
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "breathe_monitor"
         private const val PAUSE_RELAUNCH_DEBOUNCE_MS = 3_000L
+        private val ACTIVE_POLL_INTERVAL = 500.milliseconds
+        private val IDLE_POLL_INTERVAL = 3.seconds
 
         fun start(context: Context) =
             context.startForegroundService(Intent(context, AppMonitorService::class.java))

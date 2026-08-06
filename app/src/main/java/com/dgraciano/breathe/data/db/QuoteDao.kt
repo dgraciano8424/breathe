@@ -16,4 +16,15 @@ interface QuoteDao {
 
     @Query("DELETE FROM quotes")
     suspend fun deleteAll()
+
+    /**
+     * Swaps the cache in one transaction, so a crash midway cannot leave the user with
+     * no quotes at all. Callers must reject empty input before getting here.
+     */
+    @Transaction
+    suspend fun replaceAll(quotes: List<Quote>) {
+        if (quotes.isEmpty()) return
+        deleteAll()
+        insertAll(quotes)
+    }
 }

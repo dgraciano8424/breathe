@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,7 @@ import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.ui.components.ConfettiOverlay
 import com.dgraciano.breathe.ui.components.WaveBackground
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -49,12 +52,26 @@ fun PauseScreen(
     tip: MentalHealthTip,
     alternativeActivity: String,
     selectedReason: String?,
+    pauseSeconds: Int,
     onReasonSelected: (String) -> Unit,
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
     var showContent by remember { mutableStateOf(false) }
     var showConfetti by remember { mutableStateOf(false) }
+    val reducedMotion = rememberReducedMotion()
+
+    // The whole point of the pause: the way out of the app stays shut until the user
+    // has actually sat with the breathing for as long as they configured.
+    var secondsLeft by remember(pauseSeconds) { mutableIntStateOf(pauseSeconds) }
+    LaunchedEffect(pauseSeconds) {
+        secondsLeft = pauseSeconds
+        while (secondsLeft > 0) {
+            delay(1000)
+            secondsLeft--
+        }
+    }
+
     LaunchedEffect(Unit) {
         delay(100)
         showContent = true
@@ -75,7 +92,7 @@ fun PauseScreen(
 
     val transition = rememberInfiniteTransition(label = "breathe")
 
-    val breathScale by transition.animateFloat(
+    val animatedBreathScale by transition.animateFloat(
         initialValue = 0.7f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(4000, easing = FastOutSlowInEasing),
@@ -83,7 +100,7 @@ fun PauseScreen(
         ), label = "scale"
     )
 
-    val breathAlpha by transition.animateFloat(
+    val animatedBreathAlpha by transition.animateFloat(
         initialValue = 0.4f, targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
             animation = tween(4000, easing = FastOutSlowInEasing),
@@ -91,7 +108,7 @@ fun PauseScreen(
         ), label = "alpha"
     )
 
-    val phase by transition.animateFloat(
+    val animatedPhase by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(8000, easing = LinearEasing),
@@ -99,7 +116,11 @@ fun PauseScreen(
         ), label = "phase"
     )
 
-    val isInhale = phase < 0.5f
+    // With motion off the rings hold still, and the breath cue is driven by the
+    // countdown instead so the guidance still alternates.
+    val breathScale = if (reducedMotion) 0.9f else animatedBreathScale
+    val breathAlpha = if (reducedMotion) 0.6f else animatedBreathAlpha
+    val isInhale = if (reducedMotion) (secondsLeft / 4) % 2 == 0 else animatedPhase < 0.5f
     val breathLabel = if (isInhale) "Inhale deep sea air..." else "Exhale the tide..."
 
     Box(
@@ -113,12 +134,15 @@ fun PauseScreen(
         Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
             WaveBackground(modifier = Modifier.fillMaxSize())
 
+            // Scrolls rather than clipping on short screens, in landscape, and at large
+            // font scales, where the fixed-height layout used to push the actions off.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically)
             ) {
                 // Header
                 AnimatedVisibility(visible = showContent, enter = fadeIn(tween(800))) {
@@ -268,9 +292,19 @@ fun PauseScreen(
                     }
                     TextButton(
                         onClick = onYes,
+                        enabled = secondsLeft <= 0 && !showConfetti,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Continue to $appName", color = BreatheTextMuted, fontSize = 13.sp)
+                        Text(
+                            text = if (secondsLeft > 0) {
+                                "Continue to $appName in ${secondsLeft}s"
+                            } else {
+                                "Continue to $appName"
+                            },
+                            color = if (secondsLeft > 0) BreatheTextMuted.copy(alpha = 0.5f)
+                            else BreatheTextMuted,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }

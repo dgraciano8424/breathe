@@ -15,6 +15,12 @@ interface BlockedAppDao {
     @Query("SELECT packageName FROM blocked_apps")
     suspend fun getAllPackageNames(): List<String>
 
+    @Query("SELECT pauseSeconds FROM blocked_apps WHERE packageName = :packageName")
+    suspend fun getPauseSeconds(packageName: String): Int?
+
+    @Query("UPDATE blocked_apps SET pauseSeconds = :seconds WHERE packageName = :packageName")
+    suspend fun setPauseSeconds(packageName: String, seconds: Int)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(app: BlockedApp)
 

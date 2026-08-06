@@ -29,6 +29,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
@@ -56,6 +57,7 @@ private fun PauseOverlayContent(
     val selectedReason by viewModel.selectedReason.collectAsState()
     val tip by viewModel.tip.collectAsState()
     val activity by viewModel.alternativeActivity.collectAsState()
+    val pauseSeconds by viewModel.pauseSeconds.collectAsState()
 
     PauseScreen(
         appName = appName,
@@ -64,6 +66,7 @@ private fun PauseOverlayContent(
         tip = tip,
         alternativeActivity = activity,
         selectedReason = selectedReason,
+        pauseSeconds = pauseSeconds,
         onReasonSelected = viewModel::selectReason,
         onYes = onYes,
         onNo = onNo
@@ -88,6 +91,7 @@ class PauseOverlayHost @Inject constructor(
     @ApplicationContext private val context: Context,
     private val quoteRepo: QuoteRepository,
     private val statsRepo: StatsRepository,
+    private val appRepo: AppRepository,
     private val tipsRepo: MentalHealthTipsRepository,
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
@@ -131,8 +135,13 @@ class PauseOverlayHost @Inject constructor(
             viewModelFactory {
                 initializer {
                     PauseViewModel(
-                        quoteRepo, statsRepo, tipsRepo,
-                        sessionTimeHelper, sessionApprovalStore, appScope
+                        quoteRepo = quoteRepo,
+                        statsRepo = statsRepo,
+                        appRepo = appRepo,
+                        tipsRepo = tipsRepo,
+                        sessionTimeHelper = sessionTimeHelper,
+                        sessionApprovalStore = sessionApprovalStore,
+                        appScope = appScope
                     )
                 }
             }

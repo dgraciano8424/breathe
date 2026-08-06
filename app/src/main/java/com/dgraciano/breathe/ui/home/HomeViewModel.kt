@@ -73,6 +73,11 @@ class HomeViewModel @Inject constructor(
 
     fun removeApp(app: BlockedApp) = viewModelScope.launch { repo.unblockApp(app) }
 
+    /** The blocked-app Flow re-emits, so the row updates without extra plumbing. */
+    fun setPauseSeconds(packageName: String, seconds: Int) = viewModelScope.launch {
+        repo.setPauseSeconds(packageName, seconds)
+    }
+
     fun startService() = AppMonitorService.start(context)
 
     fun refreshStats() {

@@ -16,11 +16,17 @@ class QuoteRepository @Inject constructor(
         return dao.getRandom()
     }
 
+    /**
+     * A failed or empty refresh leaves the existing cache alone. Previously the delete
+     * happened before the insert and outside a transaction, so a bad response could
+     * empty the quote table and leave the pause screen with nothing to show.
+     */
     suspend fun refreshQuotes() {
-        runCatching { api.getQuotes() }.getOrNull()?.let { dtos ->
-            val quotes = dtos.map { Quote(text = it.q, author = it.a) }
-            dao.deleteAll()
-            dao.insertAll(quotes)
-        }
+        val dtos = runCatching { api.getQuotes() }.getOrNull() ?: return
+        val quotes = dtos
+            .map { Quote(text = it.q.orEmpty().trim(), author = it.a.orEmpty().trim()) }
+            .filter { it.text.isNotEmpty() }
+        if (quotes.isEmpty()) return
+        dao.replaceAll(quotes)
     }
 }

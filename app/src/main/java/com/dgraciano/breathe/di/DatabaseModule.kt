@@ -18,7 +18,11 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): BreatheDatabase =
         Room.databaseBuilder(ctx, BreatheDatabase::class.java, "breathe.db")
-            .addMigrations(BreatheDatabase.MIGRATION_1_2, BreatheDatabase.MIGRATION_2_3)
+            .addMigrations(
+                BreatheDatabase.MIGRATION_1_2,
+                BreatheDatabase.MIGRATION_2_3,
+                BreatheDatabase.MIGRATION_3_4
+            )
             .build()
 
     @Provides fun provideBlockedAppDao(db: BreatheDatabase) = db.blockedAppDao()

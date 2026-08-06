@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
@@ -42,7 +43,8 @@ fun AppSelectScreen(
     val apps by viewModel.apps.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCount by viewModel.selectedCount.collectAsState()
-    val isLoading = apps.isEmpty() && searchQuery.isEmpty()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
         WaveBackground(modifier = Modifier.fillMaxSize())
@@ -145,6 +147,26 @@ fun AppSelectScreen(
                 ) {
                     CircularProgressIndicator(color = BreathePrimary)
                 }
+            } else if (errorMessage != null) {
+                StatusMessage(
+                    title = "Something went wrong",
+                    body = errorMessage.orEmpty(),
+                    actionLabel = "Try again",
+                    onAction = { viewModel.loadInstalledApps() },
+                    modifier = Modifier.padding(padding)
+                )
+            } else if (apps.isEmpty()) {
+                StatusMessage(
+                    title = if (searchQuery.isEmpty()) "No apps found" else "No matches",
+                    body = if (searchQuery.isEmpty()) {
+                        "We couldn't find any launchable apps on this device."
+                    } else {
+                        "Nothing matches \"$searchQuery\". Try a different name."
+                    },
+                    actionLabel = if (searchQuery.isEmpty()) "Reload" else null,
+                    onAction = { viewModel.loadInstalledApps() },
+                    modifier = Modifier.padding(padding)
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier
@@ -166,6 +188,51 @@ fun AppSelectScreen(
                     items(apps, key = { it.packageName }) { app ->
                         AppListItem(app = app, onClick = { viewModel.toggleBlock(app) })
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Shared presentation for the picker's empty and error states. */
+@Composable
+private fun StatusMessage(
+    title: String,
+    body: String,
+    actionLabel: String?,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize().padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = BreatheTextPrimary
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = body,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = BreatheTextSecondary,
+                textAlign = TextAlign.Center
+            )
+            if (actionLabel != null) {
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = onAction,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BreathePrimary,
+                        contentColor = BreatheOnPrimary
+                    )
+                ) {
+                    Text(actionLabel, fontWeight = FontWeight.Bold)
                 }
             }
         }

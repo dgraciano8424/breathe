@@ -1,5 +1,6 @@
 package com.dgraciano.breathe.di
 
+import com.dgraciano.breathe.BuildConfig
 import com.dgraciano.breathe.data.remote.ZenQuotesApi
 import dagger.Module
 import dagger.Provides
@@ -18,9 +19,14 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttp(): OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
-        })
+        .apply {
+            // Debug only — release builds should not narrate network activity to logcat.
+            if (BuildConfig.DEBUG) {
+                addInterceptor(HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                })
+            }
+        }
         .build()
 
     @Provides

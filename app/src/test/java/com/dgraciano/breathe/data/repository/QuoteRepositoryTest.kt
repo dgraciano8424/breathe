@@ -6,7 +6,6 @@ import com.dgraciano.breathe.data.remote.QuoteDto
 import com.dgraciano.breathe.data.remote.ZenQuotesApi
 import io.mockk.coEvery
 import io.mockk.coVerify
-import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
@@ -46,8 +45,7 @@ class QuoteRepositoryTest {
         val quote = Quote(text = "Test quote", author = "Author")
         coEvery { dao.count() } returns 0
         coEvery { api.getQuotes() } returns listOf(dto)
-        coEvery { dao.deleteAll() } returns Unit
-        coEvery { dao.insertAll(any()) } returns Unit
+        coEvery { dao.replaceAll(any()) } returns Unit
         coEvery { dao.getRandom() } returns quote
 
         val result = repo.getRandomQuote()
@@ -73,8 +71,7 @@ class QuoteRepositoryTest {
         val dto = QuoteDto(q = "Seize the day", a = "Caesar", h = "<h>test</h>")
         coEvery { api.getQuotes() } returns listOf(dto)
         val slot = slot<List<Quote>>()
-        coEvery { dao.deleteAll() } returns Unit
-        coEvery { dao.insertAll(capture(slot)) } returns Unit
+        coEvery { dao.replaceAll(capture(slot)) } returns Unit
 
         repo.refreshQuotes()
 
@@ -93,8 +90,7 @@ class QuoteRepositoryTest {
         )
         coEvery { api.getQuotes() } returns dtos
         val slot = slot<List<Quote>>()
-        coEvery { dao.deleteAll() } returns Unit
-        coEvery { dao.insertAll(capture(slot)) } returns Unit
+        coEvery { dao.replaceAll(capture(slot)) } returns Unit
 
         repo.refreshQuotes()
 
@@ -102,17 +98,15 @@ class QuoteRepositoryTest {
     }
 
     @Test
-    fun `refreshQuotes clears old quotes before inserting new ones`() = runTest {
+    fun `refreshQuotes swaps the cache in a single transactional call`() = runTest {
         coEvery { api.getQuotes() } returns listOf(QuoteDto(q = "Q", a = "A", h = ""))
-        coEvery { dao.deleteAll() } returns Unit
-        coEvery { dao.insertAll(any()) } returns Unit
+        coEvery { dao.replaceAll(any()) } returns Unit
 
         repo.refreshQuotes()
 
-        coVerifyOrder {
-            dao.deleteAll()
-            dao.insertAll(any())
-        }
+        // Delete-then-insert as separate calls could empty the cache on a crash between.
+        coVerify(exactly = 1) { dao.replaceAll(any()) }
+        coVerify(exactly = 0) { dao.deleteAll() }
     }
 
     @Test
@@ -122,19 +116,45 @@ class QuoteRepositoryTest {
         // Must not throw
         repo.refreshQuotes()
 
-        coVerify(exactly = 0) { dao.deleteAll() }
-        coVerify(exactly = 0) { dao.insertAll(any()) }
+        coVerify(exactly = 0) { dao.replaceAll(any()) }
     }
 
     @Test
-    fun `refreshQuotes does nothing when api returns empty list`() = runTest {
+    fun `refreshQuotes leaves the cache alone when the api returns an empty list`() = runTest {
         coEvery { api.getQuotes() } returns emptyList()
-        coEvery { dao.deleteAll() } returns Unit
-        coEvery { dao.insertAll(any()) } returns Unit
+        coEvery { dao.replaceAll(any()) } returns Unit
 
         repo.refreshQuotes()
 
-        // Empty list — deleteAll + insertAll([]) still called (non-null response)
-        coVerify { dao.deleteAll() }
+        // This previously wiped the table and inserted nothing, leaving the pause
+        // screen with no quote to show until the next successful refresh.
+        coVerify(exactly = 0) { dao.replaceAll(any()) }
+        coVerify(exactly = 0) { dao.deleteAll() }
+    }
+
+    @Test
+    fun `refreshQuotes drops entries with no text rather than caching blanks`() = runTest {
+        coEvery { api.getQuotes() } returns listOf(
+            QuoteDto(q = "Real quote", a = "Author", h = ""),
+            QuoteDto(q = "   ", a = "Blank", h = ""),
+            QuoteDto(q = null, a = "Null", h = "")
+        )
+        val slot = slot<List<Quote>>()
+        coEvery { dao.replaceAll(capture(slot)) } returns Unit
+
+        repo.refreshQuotes()
+
+        assertEquals(1, slot.captured.size)
+        assertEquals("Real quote", slot.captured[0].text)
+    }
+
+    @Test
+    fun `refreshQuotes leaves the cache alone when every entry is unusable`() = runTest {
+        coEvery { api.getQuotes() } returns listOf(QuoteDto(q = null, a = null, h = null))
+        coEvery { dao.replaceAll(any()) } returns Unit
+
+        repo.refreshQuotes()
+
+        coVerify(exactly = 0) { dao.replaceAll(any()) }
     }
 }

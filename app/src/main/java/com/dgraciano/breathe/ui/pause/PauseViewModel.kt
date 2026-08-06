@@ -1,9 +1,12 @@
 package com.dgraciano.breathe.ui.pause
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.InterventionEvent
 import com.dgraciano.breathe.data.model.Quote
+import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.QuoteRepository
@@ -22,6 +25,7 @@ import javax.inject.Inject
 class PauseViewModel @Inject constructor(
     private val quoteRepo: QuoteRepository,
     private val statsRepo: StatsRepository,
+    private val appRepo: AppRepository,
     private val tipsRepo: MentalHealthTipsRepository,
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
@@ -36,6 +40,9 @@ class PauseViewModel @Inject constructor(
 
     private val _selectedReason = MutableStateFlow<String?>(null)
     val selectedReason: StateFlow<String?> = _selectedReason
+
+    private val _pauseSeconds = MutableStateFlow(BlockedApp.DEFAULT_PAUSE_SECONDS)
+    val pauseSeconds: StateFlow<Int> = _pauseSeconds
     
     private val _tip = MutableStateFlow(tipsRepo.getRandomTip())
     val tip: StateFlow<MentalHealthTip> = _tip
@@ -49,7 +56,10 @@ class PauseViewModel @Inject constructor(
     fun init(packageName: String, appName: String) {
         currentPackage = packageName
         currentAppName = appName
+        // Reset so a retargeted pause never inherits the previous app's duration.
+        _pauseSeconds.value = BlockedApp.DEFAULT_PAUSE_SECONDS
         viewModelScope.launch {
+            _pauseSeconds.value = appRepo.getPauseSeconds(packageName)
             _quote.value = quoteRepo.getRandomQuote()
             _attemptCount.value = statsRepo.getTodayAttemptCount(packageName) + 1
         }
@@ -70,9 +80,9 @@ class PauseViewModel @Inject constructor(
         val appName = currentAppName
         val reason = _selectedReason.value
         appScope.launch {
-            // Off the main thread: this scans up to 28 days of usage events.
+            // Off the main thread: this scans a week of usage events.
             val saved = sessionTimeHelper.getAvgSessionMinutes(packageName)
-            statsRepo.recordEvent(
+            recordOrLog(
                 InterventionEvent(
                     packageName = packageName,
                     appName = appName,
@@ -93,7 +103,7 @@ class PauseViewModel @Inject constructor(
         val appName = currentAppName
         val reason = _selectedReason.value
         appScope.launch {
-            statsRepo.recordEvent(
+            recordOrLog(
                 InterventionEvent(
                     packageName = packageName,
                     appName = appName,
@@ -102,5 +112,20 @@ class PauseViewModel @Inject constructor(
                 )
             )
         }
+    }
+
+    /**
+     * The screen is already gone by the time these run, so there is nobody to show an
+     * error to and nothing useful to retry into. Failing loudly in the log at least
+     * makes a silently missing statistic diagnosable instead of invisible.
+     */
+    private suspend fun recordOrLog(event: InterventionEvent) {
+        runCatching { statsRepo.recordEvent(event) }.onFailure {
+            Log.e(TAG, "Failed to record ${event.outcome} for ${event.packageName}", it)
+        }
+    }
+
+    private companion object {
+        const val TAG = "PauseViewModel"
     }
 }
