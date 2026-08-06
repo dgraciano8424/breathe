@@ -8,12 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.dgraciano.breathe.R
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.ui.pause.PauseActivity
+import com.dgraciano.breathe.ui.pause.PauseOverlayHost
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import javax.inject.Inject
@@ -25,6 +25,7 @@ class AppMonitorService : Service() {
     @Inject lateinit var detector: ForegroundAppDetector
     @Inject lateinit var appRepository: AppRepository
     @Inject lateinit var sessionApprovalStore: SessionApprovalStore
+    @Inject lateinit var pauseOverlayHost: PauseOverlayHost
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var lastForeground: String? = null
@@ -49,7 +50,9 @@ class AppMonitorService : Service() {
     private fun startMonitoring() {
         scope.launch {
             while (isActive) {
-                if (powerManager.isInteractive) {
+                // The overlay draws over the blocked app without displacing it, so the
+                // detector keeps reporting that app while the pause screen is up.
+                if (powerManager.isInteractive && !pauseOverlayHost.isShowing) {
                     val current = detector.getCurrentApp()
 
                     // If we switched apps, reset the approved session
@@ -67,12 +70,10 @@ class AppMonitorService : Service() {
                         if (!sessionApprovalStore.isApproved(current)) {
                             if (appRepository.isBlocked(current) && shouldLaunchPause(current)) {
                                 Log.d("BreatheService", "Blocking app: $current")
-                                if (Settings.canDrawOverlays(this@AppMonitorService)) {
-                                    // Approval only happens when the user taps "YES" in PauseActivity
-                                    pauseLaunchedFor = current
-                                    pauseLaunchedAt = System.currentTimeMillis()
-                                    launchPause(current)
-                                }
+                                // Approval only happens when the user taps "YES".
+                                pauseLaunchedFor = current
+                                pauseLaunchedAt = System.currentTimeMillis()
+                                launchPause(current)
                             }
                         }
                     }
@@ -86,12 +87,29 @@ class AppMonitorService : Service() {
         packageName != pauseLaunchedFor ||
                 System.currentTimeMillis() - pauseLaunchedAt > PAUSE_RELAUNCH_DEBOUNCE_MS
 
+    /**
+     * Prefers the overlay window. Starting an Activity from here is unreliable on
+     * Android 10+, so it is only a fallback for when overlay permission is missing —
+     * the pause screen may well not appear in that case, which is why onboarding asks
+     * for the permission up front.
+     */
     private fun launchPause(packageName: String) {
+        if (pauseOverlayHost.canShow()) {
+            val appName = resolveAppName(packageName)
+            pauseOverlayHost.show(packageName, appName)
+            return
+        }
+
+        Log.w("BreatheService", "No overlay permission; attempting activity launch")
         val intent = PauseActivity.newIntent(this, packageName)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         startActivity(intent)
     }
+
+    private fun resolveAppName(pkg: String): String = runCatching {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrDefault(pkg)
 
     private fun buildNotification(): Notification {
         val manager = getSystemService(NotificationManager::class.java)
@@ -113,6 +131,8 @@ class AppMonitorService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        // The overlay is a window, not an Activity — nothing else would take it down.
+        pauseOverlayHost.hide()
         super.onDestroy()
     }
 

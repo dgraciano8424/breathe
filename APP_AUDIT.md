@@ -1,18 +1,23 @@
 # Breathe Application Audit
 
 **Audit date:** 2026-07-21
-**Last revised:** 2026-08-05 — blockers 2, 3, 4, and 5 resolved; only background activity launch remains. Verification now runs against a configured SDK.
+**Last revised:** 2026-08-06 — blockers 2 through 5 resolved; blocker 1 addressed via an overlay but unverified on hardware. Verification now runs against a configured SDK.
 **Scope:** all production Kotlin/Compose source, unit tests, Android manifest, Gradle configuration, resources, `README.md`, and `.planning/codebase/` documents.
 
 ## Verdict
 
-The app has a coherent MVVM/Repository/Hilt/Room structure. Since the original audit, every data-integrity, detection, and performance blocker has been fixed, and the test suite has been brought back in sync with production APIs and extended. It is **still not production-ready**, but now for a single reason: the core interception mechanism is not guaranteed to work on Android 10+. That is a product/platform decision, not a code cleanup — and it should be settled by running the app on a physical device before any more code is written against it.
+The app has a coherent MVVM/Repository/Hilt/Room structure. Since the original audit, every data-integrity, detection, and performance blocker has been fixed, and the test suite has been brought back in sync with production APIs and extended. The interception mechanism has been rebuilt on an overlay window rather than a background Activity start.
+
+It is **not yet demonstrably working**, which is a different claim from the earlier "not production-ready". Every known defect has a fix in the tree, but the central one — does the pause screen actually appear when a blocked app opens? — has never been observed on real hardware. That single question now gates everything else, and no further code should be written against the interception path until it is answered.
 
 ## Blockers
 
-1. **Background activity launch is unreliable on Android 10+.** `AppMonitorService` directly calls `startActivity()` from a foreground service. A foreground service is not a general exemption from background-activity-start restrictions, so the core pause screen may be blocked on modern devices. This needs a product/platform decision: a policy-compliant accessibility service, a `SYSTEM_ALERT_WINDOW` overlay instead of an Activity, a supported device-management/app-control API, or a notification-driven interaction.
-   - `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:93`
-   - **Verify on a physical device before choosing a direction.** Everything else in the interception path is now correct, so this is the only thing standing between the app and a working release.
+1. **Background activity launch is unreliable on Android 10+.** **Addressed in code, unverified on hardware.**
+
+   The direction chosen was the `SYSTEM_ALERT_WINDOW` overlay. It was the obvious one: the app already declared the permission, onboarding already requested it, and the monitor already gated on `canDrawOverlays` — so it was paying the full cost of an overlay while still relying on an Activity start that the platform may refuse. `PauseOverlayHost` now draws `PauseScreen` in a `TYPE_APPLICATION_OVERLAY` window, supplying the lifecycle, ViewModelStore, and SavedStateRegistry owners a `ComposeView` would normally inherit from an Activity. `PauseActivity` remains as a fallback when overlay permission is missing.
+   - `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseOverlayHost.kt`
+   - **This is the one change in the recent series with no test coverage and no device run.** `WindowManager` and `ComposeView` code has little unit-test surface, and the behavior this blocker is about only appears on a real device. Until someone installs the debug APK and opens a blocked app, treat this as unproven. Watch specifically for: the overlay appearing at all, back-key behavior, and survival across rotation.
+   - Trade-off accepted, not eliminated: drawing over other apps carries its own Play review scrutiny. That is a policy risk taken in exchange for a technical one.
 
 2. ~~**Stats writes can be cancelled.**~~ **Resolved** (`7da8b3e`). Both writes now run on an injected `@ApplicationScope` (`SupervisorJob + Dispatchers.IO`), so they survive `PauseActivity` finishing and the ViewModel being cleared. The target package/app/reason are captured before launching, since `onNewIntent` can retarget the ViewModel mid-write. Three regression tests cover it.
    - Remaining gap: the write is fire-and-forget, so a Room failure is still silent — no retry and no user-visible error.
@@ -56,7 +61,7 @@ Done:
 | Documented item | Implementation status | Notes |
 |---|---|---|
 | Usage-access onboarding | Implemented | Returning-user behavior exists but plans describe older routing details. |
-| Foreground monitoring | Implemented with one blocker | Detection is now durable; modern background-launch restrictions remain unresolved. |
+| Foreground monitoring | Implemented, unverified | Detection is durable; interception moved to an overlay window that no one has yet seen run. |
 | Blocked-app picker | Implemented | Broad package visibility and eager Drawable loading should be tightened. |
 | Pause/breathing flow | Implemented | Persistence race fixed; small-screen and reduced-motion accessibility remain as corrections, not blockers. |
 | Quote API + Room cache | Implemented | No refresh TTL; replacement is non-transactional. |
@@ -65,7 +70,7 @@ Done:
 | App icons/launch visuals | Implemented | — |
 | Per-app custom pause duration | Not implemented | Roadmap item remains open. |
 | Widget | Not implemented | Roadmap item remains open. |
-| Play Store release readiness | Not complete | Background-launch design, package visibility, and backup/privacy block it. |
+| Play Store release readiness | Not complete | Device verification of the overlay, package visibility, and backup/privacy block it. |
 
 ## Documentation drift
 
@@ -79,5 +84,5 @@ Done:
 - `./gradlew testDebugUnitTest assembleDebug` passes: 60 tests across 6 classes, debug APK builds.
 - Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
 - The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
-- Still unverified on hardware: no instrumented or on-device run has been performed, which is exactly what blocker 1 needs.
+- Still unverified on hardware: no instrumented or on-device run has been performed. This now matters more than it did, because the overlay rewrite of the interception path rests entirely on it. The unit suite says nothing about whether the pause screen appears.
 - Note when writing usage-event fixtures: events carry real epoch timestamps, and the production code reads a zero timestamp as "no session in progress". Fixtures that start at zero are silently dropped and can make a test pass for the wrong reason.

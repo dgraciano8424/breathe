@@ -75,6 +75,12 @@ dependencies {
     implementation(libs.work.runtime)
     implementation(libs.coroutines)
 
+    // Used directly by the pause overlay, which has to supply the ViewTree owners
+    // that a ComposeView normally inherits from an Activity.
+    implementation(libs.lifecycle.runtime)
+    implementation(libs.lifecycle.viewmodel)
+    implementation(libs.savedstate)
+
     testImplementation(libs.test.junit)
     testImplementation(libs.test.coroutines)
     testImplementation(libs.test.mockk)
