@@ -65,7 +65,7 @@ Done:
 | App icons/launch visuals | Implemented | — |
 | Per-app custom pause duration | Implemented | Stored per blocked app (schema v4), set from the home list, enforced by a countdown that gates the "continue" action. |
 | Widget | Implemented | RemoteViews home-screen widget showing today's pause count and time won back; refreshed when an intervention is recorded. |
-| Play Store release readiness | Not complete | Device verification of the overlay, package visibility, and backup/privacy block it. |
+| Play Store release readiness | Build and paperwork ready; unverified | Signing, R8 config, privacy policy, data-safety answers, and permission justifications are all in place (`RELEASE.md`, `PRIVACY.md`). Device verification and a hosted policy URL still block submission. |
 
 ## Documentation drift
 
@@ -80,5 +80,7 @@ Done:
 - Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
 - The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
 - Lint is now error-free. It had been hiding a real crash: `OnboardingViewModel` called `AppOpsManager.unsafeCheckOpNoThrow`, which only exists from API 29, against a `minSdk` of 26 — onboarding would have thrown `NoSuchMethodError` on API 26-28. Now version-gated with the pre-29 `checkOpNoThrow`.
+- `./gradlew assembleRelease` succeeds: R8 shrinking passes with the reflective keep rules, producing a 1.3 MB APK plus a `mapping.txt` for crash deobfuscation. The release build itself has not been run.
+- `targetSdk` raised from 34 to 36 for Play compliance. Lint stays error-free, but the Android 15/16 behaviour changes that come with it are unverified.
 - Still unverified on hardware: no instrumented or on-device run has been performed. This now matters more than it did, because the overlay rewrite of the interception path rests entirely on it. The unit suite says nothing about whether the pause screen appears.
 - Note when writing usage-event fixtures: events carry real epoch timestamps, and the production code reads a zero timestamp as "no session in progress". Fixtures that start at zero are silently dropped and can make a test pass for the wrong reason.

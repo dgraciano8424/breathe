@@ -1,4 +1,20 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.FileInputStream
+import java.util.Properties
+
+/**
+ * Release signing is read from keystore.properties at the repo root, which is
+ * gitignored. Without it the release build still compiles — it just comes out
+ * unsigned, so CI and contributors are not blocked by a missing private key.
+ * See RELEASE.md for the four keys it expects.
+ */
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        FileInputStream(keystorePropertiesFile).use { load(it) }
+    }
+}
+val hasReleaseKeystore = keystorePropertiesFile.exists()
 
 plugins {
     alias(libs.plugins.android.application)
@@ -10,22 +26,42 @@ plugins {
 
 android {
     namespace = "com.dgraciano.breathe"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.dgraciano.breathe"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            // Drops unused resources too — without this, shrinking code alone leaves
+            // the APK carrying drawables and strings nothing references.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
+        // Deliberately no applicationIdSuffix on debug: it would install as a separate
+        // app, and the schema-v4 migration still needs to be exercised by upgrading an
+        // existing install. Add one once that verification is done.
     }
 
     compileOptions {
