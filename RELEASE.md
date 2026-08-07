@@ -14,8 +14,17 @@ true before a submission is honest.
       without a device pass, so the Android 15 and 16 behaviour changes it brings
       (enforced edge-to-edge, stricter foreground-service and overlay rules) are
       unverified. They are in the device checklist below.
-- [ ] **Host the privacy policy at a public URL.** Play requires a reachable link,
-      not a file in a repo. `PRIVACY.md` is the content; GitHub Pages is enough.
+- [ ] **Turn on GitHub Pages** (one switch, then the URL is live). The page itself is
+      committed at `docs/index.html`. In the repo: **Settings → Pages → Build and
+      deployment → Source: "Deploy from a branch" → Branch: `main`, folder:
+      `/docs` → Save.** First publish takes a minute or two, after which the policy
+      is at:
+
+      https://dgraciano8424.github.io/breathe/
+
+      Paste that into Play Console under **App content → Privacy policy**. Confirm it
+      loads in a private window first — Play rejects links that need a login, and a
+      404 here is a common cause of review delay.
 
 ## One-time setup
 

@@ -1,6 +1,11 @@
 # Breathe — Privacy Policy
 
+**Published at:** https://dgraciano8424.github.io/breathe/
 **Last updated:** 2026-08-07
+
+> The published copy is `docs/index.html`, which is what Play Console links to.
+> Edit both together — a policy that contradicts itself between two public copies
+> is worse than either one alone.
 
 Breathe adds a mindful pause before you open apps you have chosen to be mindful
 about. This document describes exactly what it does with information about you.
