@@ -69,6 +69,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- exported so the launcher can place and update it -->
+        <receiver
+            android:name=".widget.PauseCountWidget"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/pause_count_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>

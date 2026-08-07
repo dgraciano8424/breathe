@@ -1,7 +1,7 @@
 # Breathe Application Audit
 
 **Audit date:** 2026-07-21
-**Last revised:** 2026-08-06 — every original blocker and correction now has a fix in the tree; blocker 1 remains unverified on hardware. Per-app pause duration implemented.
+**Last revised:** 2026-08-06 — every original blocker and correction now has a fix in the tree; blocker 1 remains unverified on hardware. Per-app pause duration and the home-screen widget implemented.
 **Scope:** all production Kotlin/Compose source, unit tests, Android manifest, Gradle configuration, resources, `README.md`, and `.planning/codebase/` documents.
 
 ## Verdict
@@ -26,7 +26,7 @@ It is **not yet demonstrably working**, which is a different claim from the earl
 
 4. ~~**A 28-day device event scan runs from the UI action path.**~~ **Resolved** (`7da8b3e`, `3383360`). The scan moved off the main thread when the enclosing coroutine moved from `viewModelScope` (which dispatches to `Main.immediate`) to the IO-backed application scope. Its cost is now bounded — a 7-day window, since the platform only retains usage events for about a week, averaged over the 50 newest sessions — and cached averages carry a 6-hour TTL, so a user's session time is no longer frozen at whatever it was the first time they declined that app. The cache is a `ConcurrentHashMap`, because declines now share an application scope. `SessionTimeHelperTest` covers it.
 
-5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 65 tests across 6 classes and passes.
+5. ~~**The unit-test suite is out of sync with production APIs.**~~ **Resolved.** `ForegroundAppDetectorTest` exercises the current `queryEvents` implementation, and `PauseViewModelTest` matches the current constructor and reason semantics. The suite is 67 tests across 6 classes and passes.
 
 ## High-priority corrections
 
@@ -64,7 +64,7 @@ Done:
 | Achievements | Implemented | Missing from older architecture maps. |
 | App icons/launch visuals | Implemented | — |
 | Per-app custom pause duration | Implemented | Stored per blocked app (schema v4), set from the home list, enforced by a countdown that gates the "continue" action. |
-| Widget | Not implemented | Roadmap item remains open. |
+| Widget | Implemented | RemoteViews home-screen widget showing today's pause count and time won back; refreshed when an intervention is recorded. |
 | Play Store release readiness | Not complete | Device verification of the overlay, package visibility, and backup/privacy block it. |
 
 ## Documentation drift
@@ -76,8 +76,9 @@ Done:
 
 ## Verification status
 
-- `./gradlew testDebugUnitTest assembleDebug` passes: 65 tests across 6 classes, debug APK builds.
+- `./gradlew lintDebug testDebugUnitTest assembleDebug` passes: 67 tests across 6 classes, debug APK builds, lint reports no errors (51 pre-existing warnings remain).
 - Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
 - The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
+- Lint is now error-free. It had been hiding a real crash: `OnboardingViewModel` called `AppOpsManager.unsafeCheckOpNoThrow`, which only exists from API 29, against a `minSdk` of 26 — onboarding would have thrown `NoSuchMethodError` on API 26-28. Now version-gated with the pre-29 `checkOpNoThrow`.
 - Still unverified on hardware: no instrumented or on-device run has been performed. This now matters more than it did, because the overlay rewrite of the interception path rests entirely on it. The unit suite says nothing about whether the pause screen appears.
 - Note when writing usage-event fixtures: events carry real epoch timestamps, and the production code reads a zero timestamp as "no session in progress". Fixtures that start at zero are silently dropped and can make a test pass for the wrong reason.

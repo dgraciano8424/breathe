@@ -11,11 +11,13 @@ import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
+import com.dgraciano.breathe.widget.WidgetRefresher
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -40,6 +42,7 @@ class PauseViewModelTest {
     private lateinit var sessionTimeHelper: SessionTimeHelper
     private lateinit var sessionApprovalStore: SessionApprovalStore
     private lateinit var appRepo: AppRepository
+    private lateinit var widgetRefresher: WidgetRefresher
     private lateinit var appScope: CoroutineScope
     private lateinit var viewModel: PauseViewModel
 
@@ -55,6 +58,7 @@ class PauseViewModelTest {
         }
         sessionTimeHelper = mockk { every { getAvgSessionMinutes(any()) } returns 20 }
         sessionApprovalStore = mockk(relaxed = true)
+        widgetRefresher = mockk(relaxed = true)
         appRepo = mockk {
             coEvery { getPauseSeconds(any()) } returns BlockedApp.DEFAULT_PAUSE_SECONDS
         }
@@ -65,6 +69,7 @@ class PauseViewModelTest {
             tipsRepo = tipsRepo,
             sessionTimeHelper = sessionTimeHelper,
             sessionApprovalStore = sessionApprovalStore,
+            widgetRefresher = widgetRefresher,
             appScope = appScope
         )
     }
@@ -258,6 +263,31 @@ class PauseViewModelTest {
         viewModel.init("com.quick", "Quick App")
 
         assertEquals(5, viewModel.pauseSeconds.value)
+    }
+
+    @Test
+    fun `recording an event refreshes the home screen widget`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { statsRepo.recordEvent(any()) } returns Unit
+
+        viewModel.init("com.example", "Example App")
+        viewModel.recordDeclined()
+
+        verify(exactly = 1) { widgetRefresher.refresh() }
+    }
+
+    @Test
+    fun `a failed write leaves the widget showing the last good count`() = runTest {
+        coEvery { quoteRepo.getRandomQuote() } returns null
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { statsRepo.recordEvent(any()) } throws IllegalStateException("disk full")
+
+        viewModel.init("com.example", "Example App")
+        viewModel.recordDeclined()
+
+        // Refreshing here would redraw the same number and imply the choice counted.
+        verify(exactly = 0) { widgetRefresher.refresh() }
     }
 
     @Test

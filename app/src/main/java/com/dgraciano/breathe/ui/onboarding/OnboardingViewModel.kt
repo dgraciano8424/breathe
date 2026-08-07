@@ -29,12 +29,23 @@ class OnboardingViewModel @Inject constructor(
     }
 
     private fun checkUsagePermission(): Boolean {
-        val ops = context.getSystemService(AppOpsManager::class.java)
-        val mode = ops.unsafeCheckOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS,
-            Process.myUid(),
-            context.packageName
-        )
+        val ops = context.getSystemService(AppOpsManager::class.java) ?: return false
+        // unsafeCheckOpNoThrow only exists from API 29; below that the call throws
+        // NoSuchMethodError, which crashed onboarding outright on API 26-28.
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ops.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ops.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        }
         return mode == AppOpsManager.MODE_ALLOWED
     }
 

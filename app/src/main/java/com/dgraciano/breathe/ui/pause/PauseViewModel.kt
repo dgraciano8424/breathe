@@ -14,6 +14,7 @@ import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
+import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,7 @@ class PauseViewModel @Inject constructor(
     private val tipsRepo: MentalHealthTipsRepository,
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
+    private val widgetRefresher: WidgetRefresher,
     @ApplicationScope private val appScope: CoroutineScope
 ) : ViewModel() {
 
@@ -120,9 +122,11 @@ class PauseViewModel @Inject constructor(
      * makes a silently missing statistic diagnosable instead of invisible.
      */
     private suspend fun recordOrLog(event: InterventionEvent) {
-        runCatching { statsRepo.recordEvent(event) }.onFailure {
-            Log.e(TAG, "Failed to record ${event.outcome} for ${event.packageName}", it)
-        }
+        runCatching { statsRepo.recordEvent(event) }
+            .onSuccess { widgetRefresher.refresh() }
+            .onFailure {
+                Log.e(TAG, "Failed to record ${event.outcome} for ${event.packageName}", it)
+            }
     }
 
     private companion object {

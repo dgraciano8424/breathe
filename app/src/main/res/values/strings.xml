@@ -23,4 +23,12 @@
     <string name="stats_title">Your Insights</string>
     <string name="first_time_today">First time today</string>
     <string name="nth_time_today">%d times today</string>
+
+    <string name="widget_description">Shows how many mindful pauses you have taken today.</string>
+    <string name="widget_time_won_back">%s won back</string>
+    <string name="widget_no_time_yet">No pauses yet today</string>
+    <plurals name="widget_pauses_today">
+        <item quantity="one">pause taken today</item>
+        <item quantity="other">pauses taken today</item>
+    </plurals>
 </resources>

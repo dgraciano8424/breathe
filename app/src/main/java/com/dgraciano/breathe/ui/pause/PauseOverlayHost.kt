@@ -37,6 +37,7 @@ import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
 import com.dgraciano.breathe.ui.theme.BreatheTheme
+import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
@@ -95,6 +96,7 @@ class PauseOverlayHost @Inject constructor(
     private val tipsRepo: MentalHealthTipsRepository,
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
+    private val widgetRefresher: WidgetRefresher,
     @ApplicationScope private val appScope: CoroutineScope
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -141,6 +143,7 @@ class PauseOverlayHost @Inject constructor(
                         tipsRepo = tipsRepo,
                         sessionTimeHelper = sessionTimeHelper,
                         sessionApprovalStore = sessionApprovalStore,
+                        widgetRefresher = widgetRefresher,
                         appScope = appScope
                     )
                 }
