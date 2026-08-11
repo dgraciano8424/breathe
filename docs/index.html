@@ -98,7 +98,7 @@
 <header>
   <span class="mark">Breathe for Android</span>
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: 7 August 2026</p>
+  <p class="updated">Last updated: 10 August 2026</p>
 </header>
 
 <main>
@@ -125,31 +125,24 @@
 
   <h2>Permissions, and why each is needed</h2>
   <ul>
-    <li><strong>Usage access</strong> (<code>PACKAGE_USAGE_STATS</code>) — to detect
-    which app is currently in the foreground, so Breathe knows when to offer a pause,
-    and to estimate how long your typical session with an app lasts. This data is
-    read on the device and is never transmitted.</li>
+    <li><strong>Accessibility access</strong> — to detect which app has just come to
+    the front, so Breathe knows when to offer a pause. It reads only the name of the
+    app being opened: never the contents of your screen, your messages, or anything
+    you type. It never performs actions on your behalf.</li>
     <li><strong>Display over other apps</strong> (<code>SYSTEM_ALERT_WINDOW</code>) —
     to draw the pause screen over the app you are opening. Without it, the pause
     cannot appear reliably.</li>
-    <li><strong>Foreground service</strong> — to keep the monitor running so it can
-    notice when you open a paused app.</li>
-    <li><strong>Run at startup</strong> (<code>RECEIVE_BOOT_COMPLETED</code>) — so
-    monitoring resumes after you restart your phone, without you having to reopen
-    the app.</li>
-    <li><strong>Internet</strong> — used for one thing only: fetching inspirational
-    quotes from the public ZenQuotes API to display on the pause screen. No
-    information about you, your device, or your app usage is included in that
-    request.</li>
+    <li><strong>Usage access</strong> (<code>PACKAGE_USAGE_STATS</code>) — optional.
+    Used only to show how long you have spent in the apps you monitor, and to
+    estimate the time a pause saved you. Breathe works without it. This data is read
+    on the device and is never transmitted.</li>
     <li><strong>Vibrate</strong> — for haptic feedback in the app's interface.</li>
   </ul>
 
   <h2>Third parties</h2>
-  <p>Breathe contacts one third-party service: <strong>ZenQuotes</strong>
-  (<code>zenquotes.io</code>), to fetch quotation text. The request sends no personal
-  data and no identifiers beyond what any HTTPS request necessarily reveals (such as
-  your IP address, which is visible to any server you connect to). Breathe has no
-  analytics, no advertising, no crash reporting service, and no user accounts.</p>
+  <p>None. Breathe does not request the <code>INTERNET</code> permission, so it is
+  incapable of sending anything anywhere. There are no analytics, no advertising, no
+  crash reporting service, and no user accounts.</p>
 
   <h2>Children</h2>
   <p>Breathe is not directed at children and does not knowingly collect information

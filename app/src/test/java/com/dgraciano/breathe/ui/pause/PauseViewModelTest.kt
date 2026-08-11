@@ -3,11 +3,9 @@ package com.dgraciano.breathe.ui.pause
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.InterventionEvent
-import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
-import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
@@ -36,7 +34,6 @@ import org.junit.Test
 class PauseViewModelTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
-    private lateinit var quoteRepo: QuoteRepository
     private lateinit var statsRepo: StatsRepository
     private lateinit var tipsRepo: MentalHealthTipsRepository
     private lateinit var sessionTimeHelper: SessionTimeHelper
@@ -50,7 +47,6 @@ class PauseViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         appScope = CoroutineScope(testDispatcher)
-        quoteRepo = mockk()
         statsRepo = mockk()
         tipsRepo = mockk {
             every { getRandomTip() } returns MentalHealthTip("Ground Yourself", "Feel your feet on the floor.", "ground")
@@ -63,7 +59,6 @@ class PauseViewModelTest {
             coEvery { getPauseSeconds(any()) } returns BlockedApp.DEFAULT_PAUSE_SECONDS
         }
         viewModel = PauseViewModel(
-            quoteRepo = quoteRepo,
             statsRepo = statsRepo,
             appRepo = appRepo,
             tipsRepo = tipsRepo,
@@ -81,21 +76,16 @@ class PauseViewModelTest {
     }
 
     @Test
-    fun `init loads quote and sets attempt count to dao result plus one`() = runTest {
-        val quote = Quote(text = "Test quote", author = "Author")
-        coEvery { quoteRepo.getRandomQuote() } returns quote
+    fun `init sets attempt count to dao result plus one`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount("com.example") } returns 2
 
         viewModel.init("com.example", "Example App")
 
-        assertEquals(quote, viewModel.quote.value)
         assertEquals(3, viewModel.attemptCount.value) // 2 existing + 1 current
     }
 
     @Test
     fun `init called twice does not accumulate attempt count`() = runTest {
-        val quote = Quote(text = "Test quote", author = "Author")
-        coEvery { quoteRepo.getRandomQuote() } returns quote
         coEvery { statsRepo.getTodayAttemptCount("com.example") } returns 2
 
         viewModel.init("com.example", "Example App")
@@ -106,19 +96,7 @@ class PauseViewModelTest {
     }
 
     @Test
-    fun `init with null quote does not crash`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
-        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-
-        viewModel.init("com.example", "Example App")
-
-        assertNull(viewModel.quote.value)
-        assertEquals(1, viewModel.attemptCount.value)
-    }
-
-    @Test
     fun `init with zero existing attempts sets count to one`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
 
         viewModel.init("com.example.fresh", "Fresh App")
@@ -148,7 +126,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recordDeclined records event with DECLINED outcome and current reason`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val slot = slot<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
@@ -166,7 +143,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recordDeclined with no reason selected records null reason`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val slot = slot<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
@@ -179,7 +155,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recordOpened records event with OPENED outcome`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val slot = slot<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
@@ -193,7 +168,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recordDeclined then recordOpened both use the correct package`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val events = mutableListOf<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
@@ -211,7 +185,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recordDeclined still persists when the ViewModel scope is cancelled`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val slot = slot<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
@@ -228,7 +201,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recordOpened still persists when the ViewModel scope is cancelled`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val slot = slot<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
@@ -243,7 +215,6 @@ class PauseViewModelTest {
 
     @Test
     fun `init loads the per-app pause duration`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         coEvery { appRepo.getPauseSeconds("com.slow") } returns 60
 
@@ -254,7 +225,6 @@ class PauseViewModelTest {
 
     @Test
     fun `init resets the duration so a retargeted pause does not inherit it`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         coEvery { appRepo.getPauseSeconds("com.slow") } returns 60
         coEvery { appRepo.getPauseSeconds("com.quick") } returns 5
@@ -267,7 +237,6 @@ class PauseViewModelTest {
 
     @Test
     fun `recording an event refreshes the home screen widget`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         coEvery { statsRepo.recordEvent(any()) } returns Unit
 
@@ -279,7 +248,6 @@ class PauseViewModelTest {
 
     @Test
     fun `a failed write leaves the widget showing the last good count`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         coEvery { statsRepo.recordEvent(any()) } throws IllegalStateException("disk full")
 
@@ -292,7 +260,6 @@ class PauseViewModelTest {
 
     @Test
     fun `a failed write is swallowed rather than crashing the app scope`() = runTest {
-        coEvery { quoteRepo.getRandomQuote() } returns null
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         coEvery { statsRepo.recordEvent(any()) } throws IllegalStateException("disk full")
 
@@ -307,7 +274,6 @@ class PauseViewModelTest {
     @Test
     fun `recordDeclined captures the target app before a retargeting init can change it`() =
         runTest {
-            coEvery { quoteRepo.getRandomQuote() } returns null
             coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
             val events = mutableListOf<InterventionEvent>()
             coEvery { statsRepo.recordEvent(capture(events)) } returns Unit

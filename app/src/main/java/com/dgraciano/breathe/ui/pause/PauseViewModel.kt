@@ -5,11 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.InterventionEvent
-import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
-import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
@@ -24,7 +22,6 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PauseViewModel @Inject constructor(
-    private val quoteRepo: QuoteRepository,
     private val statsRepo: StatsRepository,
     private val appRepo: AppRepository,
     private val tipsRepo: MentalHealthTipsRepository,
@@ -33,9 +30,6 @@ class PauseViewModel @Inject constructor(
     private val widgetRefresher: WidgetRefresher,
     @ApplicationScope private val appScope: CoroutineScope
 ) : ViewModel() {
-
-    private val _quote = MutableStateFlow<Quote?>(null)
-    val quote: StateFlow<Quote?> = _quote
 
     private val _attemptCount = MutableStateFlow(0)
     val attemptCount: StateFlow<Int> = _attemptCount
@@ -62,7 +56,6 @@ class PauseViewModel @Inject constructor(
         _pauseSeconds.value = BlockedApp.DEFAULT_PAUSE_SECONDS
         viewModelScope.launch {
             _pauseSeconds.value = appRepo.getPauseSeconds(packageName)
-            _quote.value = quoteRepo.getRandomQuote()
             _attemptCount.value = statsRepo.getTodayAttemptCount(packageName) + 1
         }
     }

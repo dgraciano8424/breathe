@@ -4,8 +4,6 @@ kotlin = "2.2.10"
 composeBom = "2024.06.00"
 hilt = "2.60.1"
 room = "2.6.1"
-retrofit = "2.11.0"
-okhttp = "4.12.0"
 navigation = "2.7.7"
 coroutines = "1.8.1"
 ksp = "2.2.10-2.0.2"
@@ -27,9 +25,6 @@ hilt-navigation = { group = "androidx.hilt", name = "hilt-navigation-compose", v
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
-okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }

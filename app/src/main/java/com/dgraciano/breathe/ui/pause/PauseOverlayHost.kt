@@ -31,7 +31,6 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
-import com.dgraciano.breathe.data.repository.QuoteRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
@@ -53,7 +52,6 @@ private fun PauseOverlayContent(
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
-    val quote by viewModel.quote.collectAsState()
     val attemptCount by viewModel.attemptCount.collectAsState()
     val selectedReason by viewModel.selectedReason.collectAsState()
     val tip by viewModel.tip.collectAsState()
@@ -63,7 +61,6 @@ private fun PauseOverlayContent(
     PauseScreen(
         appName = appName,
         attemptCount = attemptCount,
-        quote = quote,
         tip = tip,
         alternativeActivity = activity,
         selectedReason = selectedReason,
@@ -90,7 +87,6 @@ private fun PauseOverlayContent(
 @Singleton
 class PauseOverlayHost @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val quoteRepo: QuoteRepository,
     private val statsRepo: StatsRepository,
     private val appRepo: AppRepository,
     private val tipsRepo: MentalHealthTipsRepository,
@@ -137,7 +133,6 @@ class PauseOverlayHost @Inject constructor(
             viewModelFactory {
                 initializer {
                     PauseViewModel(
-                        quoteRepo = quoteRepo,
                         statsRepo = statsRepo,
                         appRepo = appRepo,
                         tipsRepo = tipsRepo,
