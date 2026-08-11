@@ -20,6 +20,10 @@
     <string name="reason_habit">Habit</string>
     <string name="reason_escaping">Escaping</string>
     <string name="reason_curious">Curious</string>
+    <!-- Shown by the system on the accessibility settings screen -->
+    <string name="accessibility_service_summary">Shows a mindful pause before your chosen apps open</string>
+    <string name="accessibility_service_description">Breathe needs this to notice the moment you open an app you have chosen to pause. It reads only which app comes to the front — never the contents of your screen, your messages, or anything you type. Nothing leaves your device.</string>
+
     <string name="stats_title">Your Insights</string>
     <string name="first_time_today">First time today</string>
     <string name="nth_time_today">%d times today</string>

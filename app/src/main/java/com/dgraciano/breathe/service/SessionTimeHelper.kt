@@ -2,29 +2,48 @@ package com.dgraciano.breathe.service
 
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val DEFAULT_SESSION_MINUTES = 20
-private val TWENTY_EIGHT_DAYS_MS = TimeUnit.DAYS.toMillis(28)
+
+// Narrowed from 28 days to 7. The average is used only to estimate minutes saved, and a
+// week of history is ample for that — a four-week cursor was four times the work for no
+// meaningful gain in accuracy.
+private val USAGE_WINDOW_MS = TimeUnit.DAYS.toMillis(7)
+
+/** Averages drift slowly; recomputing more than hourly is wasted work. */
+private val CACHE_TTL_MS = TimeUnit.HOURS.toMillis(1)
 
 @Singleton
 class SessionTimeHelper @Inject constructor(
     private val usageStatsManager: UsageStatsManager
 ) {
-    private val cache = mutableMapOf<String, Int>()
+    private data class CachedAverage(val minutes: Int, val computedAt: Long)
+
+    // ConcurrentHashMap: this is a @Singleton reached from the accessibility service and
+    // from ViewModel coroutines, so a plain mutableMap here was an unsynchronised shared map.
+    private val cache = ConcurrentHashMap<String, CachedAverage>()
 
     fun getAvgSessionMinutes(packageName: String): Int {
-        cache[packageName]?.let { return it }
+        val now = System.currentTimeMillis()
+        cache[packageName]?.let { cached ->
+            if (now - cached.computedAt < CACHE_TTL_MS) return cached.minutes
+        }
         val result = computeAvgSessionMinutes(packageName)
-        cache[packageName] = result
+        cache[packageName] = CachedAverage(result, now)
         return result
     }
 
+    /**
+     * Scans usage history for this package. Callers must run this off the main thread —
+     * the window is measured in weeks and the event cursor covers every app on the device.
+     */
     private fun computeAvgSessionMinutes(packageName: String): Int {
         val now = System.currentTimeMillis()
-        val start = now - TWENTY_EIGHT_DAYS_MS
+        val start = now - USAGE_WINDOW_MS
 
         val events = usageStatsManager.queryEvents(start, now)
         val event = UsageEvents.Event()
