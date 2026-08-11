@@ -10,26 +10,14 @@
 -keepattributes *Annotation*
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
 
-# ── Gson ────────────────────────────────────────────────────────────────────
-# Gson instantiates these reflectively, so R8 cannot see the constructors or
-# fields being used and would otherwise strip or rename them.
--dontwarn sun.misc.**
--keep class com.google.gson.** { *; }
--keep class com.dgraciano.breathe.data.remote.** { *; }
-
 # ── Room entities ───────────────────────────────────────────────────────────
 # Column names are derived from field names; renaming them breaks the mapping
 # against a database that already exists on the user's device.
 -keep class com.dgraciano.breathe.data.model.** { *; }
 
-# ── Retrofit / OkHttp ───────────────────────────────────────────────────────
-# Both ship consumer rules; these cover the suspend-function return types that
-# older R8 versions could still discard.
--dontwarn retrofit2.**
--keep class retrofit2.** { *; }
--keep,allowobfuscation interface <1>
--dontwarn okhttp3.**
--dontwarn okio.**
+# ── Accessibility service ───────────────────────────────────────────────────
+# Instantiated by the system from the manifest name, never from our code.
+-keep class com.dgraciano.breathe.service.BreatheAccessibilityService { *; }
 
 # ── App widget ──────────────────────────────────────────────────────────────
 # Instantiated by the system from the manifest name, never from our code.

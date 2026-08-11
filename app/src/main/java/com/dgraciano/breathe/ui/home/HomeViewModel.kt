@@ -2,6 +2,7 @@ package com.dgraciano.breathe.ui.home
 
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
@@ -9,7 +10,7 @@ import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
-import com.dgraciano.breathe.service.AppMonitorService
+import com.dgraciano.breathe.service.BreatheAccessibilityService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -49,8 +50,12 @@ class HomeViewModel @Inject constructor(
     private val _nimbusStrength = MutableStateFlow(1)
     val nimbusStrength: StateFlow<Int> = _nimbusStrength
 
+    /** False when the accessibility service is off or overlay permission was revoked. */
+    private val _isMonitoringActive = MutableStateFlow(false)
+    val isMonitoringActive: StateFlow<Boolean> = _isMonitoringActive
+
     init {
-        startService()
+        refreshMonitoringState()
         refreshStats()
         loadAppsWithStats()
     }
@@ -78,7 +83,15 @@ class HomeViewModel @Inject constructor(
         repo.setPauseSeconds(packageName, seconds)
     }
 
-    fun startService() = AppMonitorService.start(context)
+    /**
+     * The accessibility service is bound by the system, so there is nothing to start.
+     * What the UI needs instead is whether it is actually running — a revoked permission
+     * previously left every screen silently showing zeros.
+     */
+    fun refreshMonitoringState() {
+        _isMonitoringActive.value =
+            BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)
+    }
 
     fun refreshStats() {
         viewModelScope.launch {
