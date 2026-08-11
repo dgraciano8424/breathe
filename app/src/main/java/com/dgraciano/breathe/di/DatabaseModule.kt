@@ -21,11 +21,11 @@ object DatabaseModule {
             .addMigrations(
                 BreatheDatabase.MIGRATION_1_2,
                 BreatheDatabase.MIGRATION_2_3,
-                BreatheDatabase.MIGRATION_3_4
+                BreatheDatabase.MIGRATION_3_4,
+                BreatheDatabase.MIGRATION_4_5
             )
             .build()
 
     @Provides fun provideBlockedAppDao(db: BreatheDatabase) = db.blockedAppDao()
-    @Provides fun provideQuoteDao(db: BreatheDatabase) = db.quoteDao()
     @Provides fun provideInterventionEventDao(db: BreatheDatabase) = db.interventionEventDao()
 }

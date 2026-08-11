@@ -1,7 +1,7 @@
 # Breathe — Privacy Policy
 
 **Published at:** https://dgraciano8424.github.io/breathe/
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-10
 
 > The published copy is `docs/index.html`, which is what Play Console links to.
 > Edit both together — a policy that contradicts itself between two public copies
@@ -30,27 +30,22 @@ backups and from device-to-device transfer.
 
 ## Permissions, and why each is needed
 
-- **Usage access** (`PACKAGE_USAGE_STATS`) — to detect which app is currently in
-  the foreground, so Breathe knows when to offer a pause, and to estimate how long
-  your typical session with an app lasts. This data is read on the device and is
-  never transmitted.
+- **Accessibility access** — to detect which app has just come to the front, so
+  Breathe knows when to offer a pause. It reads only the name of the app being
+  opened: never the contents of your screen, your messages, or anything you type.
+  It never performs actions on your behalf.
 - **Display over other apps** (`SYSTEM_ALERT_WINDOW`) — to draw the pause screen
   over the app you are opening. Without it, the pause cannot appear reliably.
-- **Foreground service** — to keep the monitor running so it can notice when you
-  open a paused app.
-- **Run at startup** (`RECEIVE_BOOT_COMPLETED`) — so monitoring resumes after you
-  restart your phone, without you having to reopen the app.
-- **Internet** — used for one thing only: fetching inspirational quotes from the
-  public ZenQuotes API to display on the pause screen. No information about you,
-  your device, or your app usage is included in that request.
+- **Usage access** (`PACKAGE_USAGE_STATS`) — optional. Used only to show how long
+  you have spent in the apps you monitor, and to estimate the time a pause saved
+  you. Breathe works without it. This data is read on the device and is never
+  transmitted.
 - **Vibrate** — for haptic feedback in the app's interface.
 
 ## Third parties
 
-Breathe contacts one third-party service: **ZenQuotes** (`zenquotes.io`), to fetch
-quotation text. The request sends no personal data and no identifiers beyond what
-any HTTPS request necessarily reveals (such as your IP address, which is visible to
-any server you connect to). Breathe has no analytics, no advertising, no crash
+None. Breathe does not request the `INTERNET` permission, so it is incapable of
+sending anything anywhere. There are no analytics, no advertising, no crash
 reporting service, and no user accounts.
 
 ## Children

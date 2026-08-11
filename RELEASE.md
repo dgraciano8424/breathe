@@ -86,20 +86,32 @@ Breathe collects and transmits **no** user data, so the form is short:
 - Do you provide a way for users to request data deletion? Uninstalling removes
   everything; there is no server-side data.
 
-The only network call is an unauthenticated GET to `zenquotes.io` for quotation
-text, carrying no user information.
+The app makes no network calls at all. The `INTERNET` permission is not declared,
+so it is incapable of transmitting anything.
 
 ### Permission declarations
 
-Two permissions will be challenged; have these answers ready.
+Three declarations will be challenged; have these answers ready.
 
+- **AccessibilityService.** Requires the Play Console declaration and an in-app
+  prominent disclosure with affirmative consent, both of which the app now has.
+  Justification: the service detects which app has come to the front so the pause
+  can appear before it draws. It requests window-state events only and sets
+  `canRetrieveWindowContent="false"`, so it cannot read screen contents. It does
+  **not** set `isAccessibilityTool`, because policy excludes monitoring apps from
+  that flag.
 - **`SYSTEM_ALERT_WINDOW` (display over other apps).** Core functionality: the
   pause screen must appear over the app being opened. There is no alternative —
   launching an Activity from the background is unreliable on Android 10+, which is
   precisely why this app uses an overlay.
-- **`PACKAGE_USAGE_STATS` (usage access).** Core functionality: the app cannot know
-  when to intervene without knowing which app is in the foreground. Read on-device
-  only, never transmitted.
+- **`PACKAGE_USAGE_STATS` (usage access).** Optional, not core. Used only to show
+  time spent per app and to estimate minutes reclaimed. The app functions fully
+  without it. Read on-device only, never transmitted.
+
+No foreground service is declared. Detection moved from a polling foreground
+service to an AccessibilityService, which removes `FOREGROUND_SERVICE`,
+`FOREGROUND_SERVICE_SPECIAL_USE` and `RECEIVE_BOOT_COMPLETED`, along with the
+specialUse justification and its demo-video requirement.
 
 `QUERY_ALL_PACKAGES` is deliberately **not** declared — the app uses a `<queries>`
 launcher-intent filter instead, which needs no justification.
@@ -118,10 +130,15 @@ launcher-intent filter instead, which needs no justification.
 None of this has been run on real hardware. In rough order of risk:
 
 1. **Does the pause screen appear?** Open a monitored app. This is the whole
-   product, and the overlay implementation has never been observed working.
-2. **Does the v4 migration survive an upgrade?** Install over an existing build
+   product, and neither the overlay nor the accessibility service has ever been
+   observed working on hardware.
+2. **Is the accessibility service actually enabled and surviving?** Enable it in
+   Settings, confirm the home banner clears, then reboot and confirm the system
+   rebinds it without opening the app.
+3. **Does the v5 migration survive an upgrade?** Install over an existing build
    rather than a clean one, and confirm previously monitored apps are still there
-   with their pause durations.
+   with their pause durations, and that dropping the quotes table did not disturb
+   anything else.
 3. **Does the widget work?** Long-press the home screen, add it, then take a pause
    and confirm the count moves.
 4. **Does the release build behave like the debug build?** R8 changes things.

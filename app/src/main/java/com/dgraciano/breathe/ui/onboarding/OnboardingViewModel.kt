@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
+import com.dgraciano.breathe.service.BreatheAccessibilityService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,9 +24,16 @@ class OnboardingViewModel @Inject constructor(
     private val _hasOverlayPermission = MutableStateFlow(false)
     val hasOverlayPermission: StateFlow<Boolean> = _hasOverlayPermission
 
+    /** The one that powers interception now that the polling service is gone. */
+    private val _hasAccessibility = MutableStateFlow(false)
+    val hasAccessibility: StateFlow<Boolean> = _hasAccessibility
+
+    init { refreshPermissionState() }
+
     fun refreshPermissionState() {
         _hasUsagePermission.value = checkUsagePermission()
         _hasOverlayPermission.value = checkOverlayPermission()
+        _hasAccessibility.value = BreatheAccessibilityService.isEnabled(context)
     }
 
     private fun checkUsagePermission(): Boolean {

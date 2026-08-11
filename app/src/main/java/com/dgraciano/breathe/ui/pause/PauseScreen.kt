@@ -29,7 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dgraciano.breathe.data.model.InterventionEvent
-import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.ui.components.ConfettiOverlay
 import com.dgraciano.breathe.ui.components.WaveBackground
@@ -48,7 +47,6 @@ private val reasons = listOf(
 fun PauseScreen(
     appName: String,
     attemptCount: Int,
-    quote: Quote?,
     tip: MentalHealthTip,
     alternativeActivity: String,
     selectedReason: String?,

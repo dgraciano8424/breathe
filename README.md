@@ -1,6 +1,6 @@
 # Breathe
 
-An Android app that intercepts distracting app launches and shows a mindful pause — a breathing animation, a mental health quote, and a simple choice: keep going or go back.
+An Android app that intercepts distracting app launches and shows a mindful pause — a breathing animation, a grounding tip, and a simple choice: keep going or go back.
 
 Built as a free alternative to [One Sec](https://one-sec.app), using only public Android APIs.
 
@@ -10,7 +10,7 @@ Built as a free alternative to [One Sec](https://one-sec.app), using only public
 
 1. A foreground service polls `UsageStatsManager` every 500ms to detect which app is in the foreground
 2. When a blocked app is detected, a full-screen pause screen launches on top of it
-3. The screen shows a breathing animation, a randomized mental health quote (from [ZenQuotes API](https://zenquotes.io)), and two buttons
+3. The screen shows a breathing animation, a grounding tip, an optional "why am I opening this?" prompt, and two buttons
 4. **No, go back** → sends you home. **Yes, open [App]** → lets you through
 
 The pause resets each time you leave and re-open the app, so it shows every time — the friction is the feature.
@@ -25,8 +25,8 @@ The pause resets each time you leave and re-open the app, so it shows every time
 | UI | Jetpack Compose + Material 3 |
 | Architecture | MVVM + Repository pattern |
 | DI | Hilt |
-| Database | Room (blocked apps + quote cache) |
-| Networking | Retrofit + OkHttp + ZenQuotes API |
+| Database | Room (monitored apps + intervention history) |
+| Networking | None — the app is fully offline |
 | Background | Foreground Service + BroadcastReceiver (boot) |
 | Build | Gradle 8.7 + Kotlin DSL |
 
@@ -38,9 +38,9 @@ The pause resets each time you leave and re-open the app, so it shows every time
 app/src/main/java/com/dgraciano/breathe/
 ├── data/
 │   ├── db/          # Room DAOs + Database
-│   ├── model/       # BlockedApp, Quote entities
+│   ├── model/       # BlockedApp, InterventionEvent entities
 │   ├── remote/      # Retrofit API + DTOs
-│   └── repository/  # AppRepository, QuoteRepository
+│   └── repository/  # AppRepository, StatsRepository
 ├── di/              # Hilt modules (DB, Network, SystemService)
 ├── service/         # AppMonitorService, ForegroundAppDetector, BootReceiver
 └── ui/

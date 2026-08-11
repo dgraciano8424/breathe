@@ -34,7 +34,9 @@ fun OnboardingScreen(
     val context = LocalContext.current
     val hasUsage by viewModel.hasUsagePermission.collectAsState()
     val hasOverlay by viewModel.hasOverlayPermission.collectAsState()
+    val hasAccessibility by viewModel.hasAccessibility.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
+    var showDisclosure by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -48,10 +50,22 @@ fun OnboardingScreen(
         }
     }
 
-    LaunchedEffect(hasUsage, hasOverlay) {
-        if (hasUsage && hasOverlay) {
+    // Interception needs accessibility plus the overlay. Usage access is optional now —
+    // it only enriches the stats screens.
+    LaunchedEffect(hasAccessibility, hasOverlay) {
+        if (hasAccessibility && hasOverlay) {
             onPermissionsGranted()
         }
+    }
+
+    if (showDisclosure) {
+        AccessibilityDisclosureDialog(
+            onDismiss = { showDisclosure = false },
+            onAgree = {
+                showDisclosure = false
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        )
     }
 
     val transition = rememberInfiniteTransition(label = "onboard")
@@ -110,22 +124,21 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Permission 1: Usage Stats
+            // Card titles match the labels shown in system Settings. "Ocean Brush
+            // Overlay" gave no clue it meant "Display over other apps", which made the
+            // hand-off to Settings a dead end.
             PermissionCard(
-                title = "Digital Awareness",
-                description = "Lets Breathe notice when you open distracting apps.",
-                isGranted = hasUsage,
-                onClick = {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                }
+                title = "Accessibility access",
+                description = "Lets Breathe notice the moment you open an app you've chosen to pause.",
+                isGranted = hasAccessibility,
+                onClick = { showDisclosure = true }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Permission 2: Overlay
             PermissionCard(
-                title = "Ocean Brush Overlay",
-                description = "Required to show the mindful pause over other apps.",
+                title = "Display over other apps",
+                description = "Lets the pause appear on top of the app you're opening.",
                 isGranted = hasOverlay,
                 onClick = {
                     val intent = Intent(
@@ -136,9 +149,20 @@ fun OnboardingScreen(
                 }
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            PermissionCard(
+                title = "Usage access (optional)",
+                description = "Adds how long you've spent in each app to your stats.",
+                isGranted = hasUsage,
+                onClick = {
+                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                }
+            )
+
             Spacer(modifier = Modifier.height(32.dp))
 
-            if (hasUsage && hasOverlay) {
+            if (hasAccessibility && hasOverlay) {
                 Button(
                     onClick = { onPermissionsGranted() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -150,6 +174,66 @@ fun OnboardingScreen(
             }
         }
     }
+}
+
+/**
+ * Prominent disclosure, shown before the user is sent to accessibility settings.
+ *
+ * Google Play requires this in-app (not only in the store listing) and requires an
+ * affirmative action to consent — hence a dialog with an explicit agree button rather
+ * than passive copy on the card.
+ */
+@Composable
+private fun AccessibilityDisclosureDialog(
+    onDismiss: () -> Unit,
+    onAgree: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BreatheSurface,
+        title = {
+            Text(
+                "How Breathe uses accessibility access",
+                color = BreatheTextPrimary,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Breathe uses Android's accessibility service to detect which app has " +
+                        "just come to the front. That is the only way to show your pause " +
+                        "before the app opens.",
+                    color = BreatheTextSecondary,
+                    fontSize = 14.sp
+                )
+                Text(
+                    "It reads only the name of the app being opened. It does not read the " +
+                        "contents of your screen, your messages, or anything you type, and " +
+                        "it never performs actions on your behalf.",
+                    color = BreatheTextSecondary,
+                    fontSize = 14.sp
+                )
+                Text(
+                    "This information stays on your device. It is not collected, shared, " +
+                        "or sent anywhere.",
+                    color = BreatheTextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onAgree) {
+                Text("I understand — open settings", color = BreathePrimary, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Not now", color = BreatheTextSecondary)
+            }
+        }
+    )
 }
 
 @Composable

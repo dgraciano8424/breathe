@@ -40,7 +40,6 @@ class PauseActivity : ComponentActivity() {
 
         setContent {
             BreatheTheme {
-                val quote by viewModel.quote.collectAsState()
                 val attemptCount by viewModel.attemptCount.collectAsState()
                 val selectedReason by viewModel.selectedReason.collectAsState()
                 val tip by viewModel.tip.collectAsState()
@@ -50,7 +49,6 @@ class PauseActivity : ComponentActivity() {
                 PauseScreen(
                     appName = appName,
                     attemptCount = attemptCount,
-                    quote = quote,
                     tip = tip,
                     alternativeActivity = activity,
                     selectedReason = selectedReason,
