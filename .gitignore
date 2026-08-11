@@ -1,11 +1,19 @@
 *.iml
 .gradle
-/local.properties
 /.idea
 .DS_Store
-/build
 **/build/
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+.kotlin/
+*.hprof
+
+# Signing material — never commit
+*.jks
+*.keystore
+keystore.properties
+
+# Agent scratch state (server pids, logs, throwaway mockups)
+.superpowers/
