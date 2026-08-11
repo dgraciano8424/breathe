@@ -10,8 +10,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.lifecycleScope
 import com.dgraciano.breathe.ui.theme.BreatheTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class PauseActivity : ComponentActivity() {
@@ -33,6 +35,10 @@ class PauseActivity : ComponentActivity() {
             )
         }
 
+        // The pause screen names the app the user is being nudged about. Keep it out of
+        // recents thumbnails and screenshots.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
         val blockedPackage = intent.getStringExtra(EXTRA_PACKAGE) ?: ""
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: blockedPackage
 
@@ -40,35 +46,44 @@ class PauseActivity : ComponentActivity() {
 
         setContent {
             BreatheTheme {
-                val quote by viewModel.quote.collectAsState()
                 val attemptCount by viewModel.attemptCount.collectAsState()
                 val selectedReason by viewModel.selectedReason.collectAsState()
                 val tip by viewModel.tip.collectAsState()
                 val activity by viewModel.alternativeActivity.collectAsState()
+                // From the ViewModel, so a re-delivered intent updates the name.
+                val currentAppName by viewModel.appName.collectAsState()
 
                 PauseScreen(
-                    appName = appName,
+                    appName = currentAppName,
                     attemptCount = attemptCount,
-                    quote = quote,
                     tip = tip,
                     alternativeActivity = activity,
                     selectedReason = selectedReason,
                     onReasonSelected = viewModel::selectReason,
-                    onYes = {
-                        viewModel.recordOpened()
-                        finish() // Just finish to let them go to the app they were opening
-                    },
+                    onYes = { dismissAfterRecording { viewModel.recordOpened() } },
                     onNo = {
-                        viewModel.recordDeclined()
-                        startActivity(
-                            Intent(Intent.ACTION_MAIN)
-                                .addCategory(Intent.CATEGORY_HOME)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                        finish()
+                        dismissAfterRecording {
+                            viewModel.recordDeclined()
+                            startActivity(
+                                Intent(Intent.ACTION_MAIN)
+                                    .addCategory(Intent.CATEGORY_HOME)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
                     }
                 )
             }
+        }
+    }
+
+    /**
+     * Persists the intervention before tearing the screen down. Finishing first would
+     * cancel the write.
+     */
+    private fun dismissAfterRecording(record: suspend () -> Unit) {
+        lifecycleScope.launch {
+            runCatching { record() }
+            finish()
         }
     }
 

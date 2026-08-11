@@ -1,6 +1,9 @@
 package com.dgraciano.breathe.ui.home
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,19 +12,28 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
@@ -32,14 +44,32 @@ fun HomeScreen(
     onAddApp: () -> Unit,
     onViewStats: () -> Unit,
     onAchievements: () -> Unit,
+    onSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val apps by viewModel.blockedApps.collectAsState()
     val todayAttempts by viewModel.todayAttempts.collectAsState()
     val todayDeclined by viewModel.todayDeclined.collectAsState()
+    val todayMinutesSaved by viewModel.todayMinutesSaved.collectAsState()
+    val isMonitoringActive by viewModel.isMonitoringActive.collectAsState()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(Unit) {
         viewModel.refreshStats()
+    }
+
+    // Permissions can be revoked while the app is backgrounded, so re-check on resume
+    // rather than only at construction.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshMonitoringState()
+                viewModel.refreshStats()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
@@ -71,6 +101,13 @@ fun HomeScreen(
                                 tint = BreatheTextSecondary
                             )
                         }
+                        IconButton(onClick = onSettings) {
+                            Icon(
+                                Icons.Outlined.Settings,
+                                contentDescription = "Settings",
+                                tint = BreatheTextSecondary
+                            )
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
@@ -92,11 +129,25 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
+                if (!isMonitoringActive) {
+                    item {
+                        MonitoringInactiveBanner(
+                            onFix = {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                )
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                    }
+                }
+
                 item {
                     if (todayAttempts > 0 || todayDeclined > 0) {
                         TodaySummaryCard(
                             attempts = todayAttempts,
                             declined = todayDeclined,
+                            minutesSaved = todayMinutesSaved,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                         )
                     }
@@ -177,8 +228,52 @@ fun HomeScreen(
     }
 }
 
+/**
+ * Shown when the accessibility service or overlay permission is off. Without it a broken
+ * app is indistinguishable from an idle one — every screen simply reads zero.
+ */
 @Composable
-private fun TodaySummaryCard(attempts: Int, declined: Int, modifier: Modifier = Modifier) {
+private fun MonitoringInactiveBanner(onFix: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(BreatheWarning.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+            .border(1.dp, BreatheWarning.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onFix)
+            .semantics { role = Role.Button }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Warning,
+            contentDescription = null,
+            tint = BreatheWarning,
+            modifier = Modifier.size(24.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Breathe isn't running",
+                color = BreatheTextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Your pauses won't appear until you turn accessibility access back on. Tap to fix.",
+                color = BreatheTextSecondary,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun TodaySummaryCard(
+    attempts: Int,
+    declined: Int,
+    minutesSaved: Int,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -204,7 +299,7 @@ private fun TodaySummaryCard(attempts: Int, declined: Int, modifier: Modifier = 
                 .height(36.dp)
                 .background(BreatheDivider)
         )
-        SummaryItem(value = "${declined * 20}m", label = "Saved")
+        SummaryItem(value = "${minutesSaved}m", label = "Saved")
     }
 }
 
@@ -227,7 +322,7 @@ private fun BlockedAppRow(app: BlockedApp, usageMinutes: Int, onRemove: () -> Un
             Text(
                 text = formatUsage(usageMinutes),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (usageMinutes > 60) Color(0xFFFF8A80) else BreatheTextSecondary
+                color = if (usageMinutes > 60) BreatheWarning else BreatheTextSecondary
             )
         },
         trailingContent = {

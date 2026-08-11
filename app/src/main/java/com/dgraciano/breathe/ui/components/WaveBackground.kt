@@ -12,20 +12,30 @@ import androidx.compose.ui.graphics.Path
 import com.dgraciano.breathe.ui.theme.BreatheBackground
 import com.dgraciano.breathe.ui.theme.BreathePrimary
 import com.dgraciano.breathe.ui.theme.BreatheSecondary
+import com.dgraciano.breathe.ui.util.rememberReducedMotion
 import kotlin.math.sin
 
 @Composable
 fun WaveBackground(modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "wave")
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 2 * Math.PI.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase"
-    )
+    // Decorative only. When the user has animations off, draw the waves once and stop —
+    // this ran on every screen, redrawing a full path each frame.
+    val reducedMotion = rememberReducedMotion()
+
+    val phase = if (reducedMotion) {
+        0f
+    } else {
+        val infiniteTransition = rememberInfiniteTransition(label = "wave")
+        val animated by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 2 * Math.PI.toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(4000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "phase"
+        )
+        animated
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Canvas(modifier = Modifier.fillMaxSize()) {

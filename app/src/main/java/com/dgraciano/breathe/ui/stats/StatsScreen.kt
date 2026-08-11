@@ -113,7 +113,7 @@ fun StatsScreen(
                     StatCardLarge(
                         value = "${state.weeklyDeclined}",
                         label = "Total times you chose presence over scrolling",
-                        subtext = "That's roughly ${state.weeklyDeclined * 20} minutes saved this week.",
+                        subtext = "That's ${state.weeklyMinutesSaved} minutes saved this week.",
                         accent = BreatheSecondary
                     )
 

@@ -7,7 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
-import com.dgraciano.breathe.service.AppMonitorService
+import android.provider.Settings
+import com.dgraciano.breathe.service.BreatheAccessibilityService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -40,20 +41,37 @@ class HomeViewModel @Inject constructor(
     private val _todayMinutesSaved = MutableStateFlow(0)
     val todayMinutesSaved: StateFlow<Int> = _todayMinutesSaved
 
+    /**
+     * False when the accessibility service is off or the overlay permission was revoked.
+     * Previously the app silently showed zeros in that state with no way to discover it
+     * had stopped working.
+     */
+    private val _isMonitoringActive = MutableStateFlow(false)
+    val isMonitoringActive: StateFlow<Boolean> = _isMonitoringActive
+
     init {
-        startService()
+        refreshMonitoringState()
         refreshStats()
         loadAppsWithStats()
+    }
+
+    fun refreshMonitoringState() {
+        _isMonitoringActive.value =
+            BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)
     }
 
     private fun loadAppsWithStats() {
         viewModelScope.launch(Dispatchers.IO) {
             val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val now = System.currentTimeMillis()
-            val start = now - TimeUnit.DAYS.toMillis(7)
-            
+
             repo.getBlockedApps().collect { apps ->
-                val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
+                // Recomputed per emission; hoisting these outside the collector froze the
+                // window at ViewModel construction time.
+                val now = System.currentTimeMillis()
+                val start = now - TimeUnit.DAYS.toMillis(7)
+                val stats = runCatching {
+                    usageStatsManager.queryAndAggregateUsageStats(start, now)
+                }.getOrDefault(emptyMap())
                 _blockedAppsWithStats.value = apps.map { app ->
                     val timeMs = stats[app.packageName]?.totalTimeInForeground ?: 0L
                     BlockedAppWithStats(app, (timeMs / 60000).toInt())
@@ -63,8 +81,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun removeApp(app: BlockedApp) = viewModelScope.launch { repo.unblockApp(app) }
-
-    fun startService() = AppMonitorService.start(context)
 
     fun refreshStats() {
         viewModelScope.launch {

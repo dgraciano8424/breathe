@@ -3,8 +3,7 @@ package com.dgraciano.breathe.ui.nav
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -14,7 +13,9 @@ import com.dgraciano.breathe.ui.appselect.AppSelectScreen
 import com.dgraciano.breathe.ui.home.HomeScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingViewModel
+import com.dgraciano.breathe.ui.settings.SettingsScreen
 import com.dgraciano.breathe.ui.stats.StatsScreen
+import com.dgraciano.breathe.ui.util.rememberReducedMotion
 
 object Routes {
     const val ONBOARDING   = "onboarding"
@@ -22,31 +23,40 @@ object Routes {
     const val APP_SELECT   = "app_select"
     const val STATS        = "stats"
     const val ACHIEVEMENTS = "achievements"
+    const val SETTINGS     = "settings"
 }
 
 @Composable
 fun BreatheNavGraph() {
     val nav = rememberNavController()
     val onboardingViewModel: OnboardingViewModel = hiltViewModel()
-    val hasUsage by onboardingViewModel.hasUsagePermission.collectAsState()
 
-    // Determine starting destination based on permission
-    val startDest = if (hasUsage) Routes.HOME else Routes.ONBOARDING
+    // Captured once: NavHost reads startDestination only on first composition, so a value
+    // that changes later is silently ignored. Gate on what actually powers interception.
+    val startDest = remember {
+        val ready = onboardingViewModel.hasAccessibility.value &&
+            onboardingViewModel.hasOverlayPermission.value
+        if (ready) Routes.HOME else Routes.ONBOARDING
+    }
+
+    // Decorative screen transitions; skipped when the user has animations turned off.
+    val reducedMotion = rememberReducedMotion()
+    val duration = if (reducedMotion) 0 else 700
 
     NavHost(
         navController = nav,
         startDestination = startDest,
         enterTransition = {
-            fadeIn(animationSpec = tween(700)) + slideInHorizontally(animationSpec = tween(700)) { it / 10 }
+            fadeIn(animationSpec = tween(duration)) + slideInHorizontally(animationSpec = tween(duration)) { it / 10 }
         },
         exitTransition = {
-            fadeOut(animationSpec = tween(700)) + slideOutHorizontally(animationSpec = tween(700)) { -it / 10 }
+            fadeOut(animationSpec = tween(duration)) + slideOutHorizontally(animationSpec = tween(duration)) { -it / 10 }
         },
         popEnterTransition = {
-            fadeIn(animationSpec = tween(700)) + slideInHorizontally(animationSpec = tween(700)) { -it / 10 }
+            fadeIn(animationSpec = tween(duration)) + slideInHorizontally(animationSpec = tween(duration)) { -it / 10 }
         },
         popExitTransition = {
-            fadeOut(animationSpec = tween(700)) + slideOutHorizontally(animationSpec = tween(700)) { it / 10 }
+            fadeOut(animationSpec = tween(duration)) + slideOutHorizontally(animationSpec = tween(duration)) { it / 10 }
         }
     ) {
         composable(Routes.ONBOARDING) {
@@ -62,7 +72,8 @@ fun BreatheNavGraph() {
             HomeScreen(
                 onAddApp       = { nav.navigate(Routes.APP_SELECT) },
                 onViewStats    = { nav.navigate(Routes.STATS) },
-                onAchievements = { nav.navigate(Routes.ACHIEVEMENTS) }
+                onAchievements = { nav.navigate(Routes.ACHIEVEMENTS) },
+                onSettings     = { nav.navigate(Routes.SETTINGS) }
             )
         }
         composable(Routes.APP_SELECT) {
@@ -73,6 +84,9 @@ fun BreatheNavGraph() {
         }
         composable(Routes.ACHIEVEMENTS) {
             AchievementsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(onBack = { nav.popBackStack() })
         }
     }
 }

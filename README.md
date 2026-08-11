@@ -1,6 +1,6 @@
 # Breathe
 
-An Android app that intercepts distracting app launches and shows a mindful pause — a breathing animation, a mental health quote, and a simple choice: keep going or go back.
+An Android app that intercepts distracting app launches and shows a mindful pause — a breathing animation, a grounding tip, and a simple choice: keep going or go back.
 
 Built as a free alternative to [One Sec](https://one-sec.app), using only public Android APIs.
 
@@ -8,12 +8,14 @@ Built as a free alternative to [One Sec](https://one-sec.app), using only public
 
 ## How it works
 
-1. A foreground service polls `UsageStatsManager` every 500ms to detect which app is in the foreground
-2. When a blocked app is detected, a full-screen pause screen launches on top of it
-3. The screen shows a breathing animation, a randomized mental health quote (from [ZenQuotes API](https://zenquotes.io)), and two buttons
-4. **No, go back** → sends you home. **Yes, open [App]** → lets you through
+1. An `AccessibilityService` listens for window-state changes to detect which app has come to the front
+2. When a monitored app is detected, a full-screen overlay is drawn on top of it
+3. The screen shows a breathing animation, a grounding tip, an optional "why am I opening this?" prompt, and two buttons
+4. **I'll do something else** → sends you home. **Continue to [App]** → lets you through, after the pause elapses
 
-The pause resets each time you leave and re-open the app, so it shows every time — the friction is the feature.
+"Continue" stays disabled for the length of your chosen pause (8 seconds by default), and the back button counts as turning back rather than a way around it. The friction is the feature.
+
+Choosing to continue grants a five-minute window before you are asked again, so the app does not nag you while you are deliberately using something.
 
 ---
 
@@ -25,9 +27,10 @@ The pause resets each time you leave and re-open the app, so it shows every time
 | UI | Jetpack Compose + Material 3 |
 | Architecture | MVVM + Repository pattern |
 | DI | Hilt |
-| Database | Room (blocked apps + quote cache) |
-| Networking | Retrofit + OkHttp + ZenQuotes API |
-| Background | Foreground Service + BroadcastReceiver (boot) |
+| Database | Room (monitored apps + intervention history) |
+| Preferences | DataStore |
+| Networking | None — the app is fully offline |
+| Background | AccessibilityService (system-bound) |
 | Build | Gradle 8.7 + Kotlin DSL |
 
 ---
@@ -74,17 +77,19 @@ Open the `breathe` folder in Android Studio. Wait for Gradle sync to complete, t
 
 The app requires one special permission that must be granted manually:
 
-- **Usage Access** (`PACKAGE_USAGE_STATS`) — Settings → Apps → Special App Access → Usage Access → Breathe → Allow
+- **Accessibility access** — required. Detects which app is opening. Settings → Accessibility → Breathe
+- **Display over other apps** (`SYSTEM_ALERT_WINDOW`) — required. Draws the pause on top of the app you are opening
+- **Usage access** (`PACKAGE_USAGE_STATS`) — optional. Only adds time-spent figures to your stats
 
-The onboarding screen walks you through this on first launch.
+The onboarding screen walks you through these on first launch. See [PRIVACY.md](PRIVACY.md) for exactly what is read and stored — nothing leaves your device.
 
 ---
 
 ## Key concepts (for learning)
 
-**Why a foreground service?** Android kills background processes aggressively to save battery. A foreground service stays alive but must show a persistent notification — Android's way of being transparent with the user.
+**Why an AccessibilityService?** Android has no general public callback for "app X just launched." The two options are polling `UsageStatsManager` on a timer, or listening to accessibility window events. This app started with polling and moved to accessibility events: they arrive as the app comes to the front rather than up to half a second later, and they need no always-running foreground service. It is also what every comparable app ships.
 
-**Why poll instead of listen?** Android doesn't provide a public event/callback for "app X just launched." `UsageStatsManager` is a pull API — you ask it "what happened recently?" on a timer.
+**Why an overlay rather than an Activity?** Launching an Activity from the background is heavily restricted on modern Android. Drawing into a `TYPE_APPLICATION_OVERLAY` window sidesteps that entirely — and it means the "display over other apps" permission is one the app genuinely uses.
 
 **Why the repository pattern?** The UI doesn't need to know if data comes from a database or an API. The repository decides. This makes screens simple and logic testable.
 
@@ -95,10 +100,13 @@ The onboarding screen walks you through this on first launch.
 ## Roadmap
 
 - [x] App icons and launch screen
-- [ ] Per-app custom pause duration
 - [x] Stats screen (how many pauses, how many times you went back)
 - [x] Achievement progress and time-saved insights
+- [x] Configurable pause length
+- [ ] Per-app custom pause duration
+- [ ] Scheduled blocking hours
 - [ ] Widget showing daily pause count
+- [ ] Translations
 - [ ] Play Store release
 
 ---

@@ -1,5 +1,11 @@
 <resources>
-    <style name="Theme.Breathe" parent="android:Theme.Material.Light.NoActionBar">
+    <!--
+      Parented to the dark theme to match the Compose colour scheme, which is dark-only.
+      A Light parent meant the window background painted white before Compose drew,
+      producing a white flash on every launch.
+    -->
+    <style name="Theme.Breathe" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ocean_deep</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

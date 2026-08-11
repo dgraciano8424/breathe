@@ -15,6 +15,7 @@ data class StatsUiState(
     val todayDeclined: Int = 0,
     val weeklyAttempts: Int = 0,
     val weeklyDeclined: Int = 0,
+    val weeklyMinutesSaved: Int = 0,
     val focusStreak: Int = 0,
     val lifeWonBackActivity: String = "",
     val topApps: List<AppStat> = emptyList(),
@@ -37,8 +38,10 @@ class StatsViewModel @Inject constructor(
         viewModelScope.launch {
             val todayDeclined = statsRepo.getTodayDeclined()
             val streak = statsRepo.getFocusStreak()
-            
-            val savedMinutes = todayDeclined * 20
+
+            // The real, per-app measured figure. This was `todayDeclined * 20`, a
+            // fabricated number that contradicted the value actually stored per event.
+            val savedMinutes = statsRepo.getTodayMinutesSaved()
             val activity = when {
                 savedMinutes >= 60 -> "read 30 pages of a physical book"
                 savedMinutes >= 30 -> "take a long walk in the park"
@@ -52,6 +55,7 @@ class StatsViewModel @Inject constructor(
                 todayDeclined = todayDeclined,
                 weeklyAttempts = statsRepo.getWeeklyTotalAttempts(),
                 weeklyDeclined = statsRepo.getWeeklyDeclined(),
+                weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
                 focusStreak = streak,
                 lifeWonBackActivity = activity,
                 topApps = statsRepo.getTopAppsThisWeek(),

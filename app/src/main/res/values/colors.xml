@@ -1,0 +1,4 @@
+<resources>
+    <!-- Must match BreatheBackground / OceanDeep in ui/theme/Color.kt. -->
+    <color name="ocean_deep">#012A36</color>
+</resources>

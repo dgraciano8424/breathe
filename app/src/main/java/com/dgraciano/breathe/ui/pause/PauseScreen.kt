@@ -1,5 +1,6 @@
 package com.dgraciano.breathe.ui.pause
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -8,6 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,16 +26,22 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dgraciano.breathe.data.model.InterventionEvent
-import com.dgraciano.breathe.data.model.Quote
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
 import kotlinx.coroutines.delay
+
+/** How long the user must sit with the pause before "Continue" becomes tappable. */
+const val DEFAULT_PAUSE_SECONDS = 8
 
 private val reasons = listOf(
     InterventionEvent.REASON_BORED to "Bored",
@@ -44,19 +54,35 @@ private val reasons = listOf(
 fun PauseScreen(
     appName: String,
     attemptCount: Int,
-    quote: Quote?,
     tip: MentalHealthTip,
     alternativeActivity: String,
     selectedReason: String?,
     onReasonSelected: (String) -> Unit,
     onYes: () -> Unit,
-    onNo: () -> Unit
+    onNo: () -> Unit,
+    pauseSeconds: Int = DEFAULT_PAUSE_SECONDS
 ) {
     var showContent by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(100)
         showContent = true
     }
+
+    // The enforced pause. Without it both actions are live immediately and the whole
+    // premise of the app — friction before opening — does not exist.
+    var remainingSeconds by remember(appName) { mutableStateOf(pauseSeconds) }
+    LaunchedEffect(appName) {
+        remainingSeconds = pauseSeconds
+        while (remainingSeconds > 0) {
+            delay(1000)
+            remainingSeconds--
+        }
+    }
+    val canContinue = remainingSeconds <= 0
+
+    // Back must not be a free bypass. Treat it as "I'll do something else" so the
+    // intervention is still recorded rather than silently dropped.
+    BackHandler(enabled = true) { onNo() }
 
     val brushOffset by animateFloatAsState(
         targetValue = if (showContent) 0f else 1f,
@@ -107,9 +133,13 @@ fun PauseScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Scrollable: this is a fixed-height column containing a 220dp circle,
+                    // a card, chips and two buttons. At large font scale or in landscape it
+                    // clipped — on the one screen a user must interact with to escape.
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically)
             ) {
                 // Header
                 AnimatedVisibility(visible = showContent, enter = fadeIn(tween(800))) {
@@ -165,6 +195,10 @@ fun PauseScreen(
                     Spacer(Modifier.height(16.dp))
                     Text(
                         text = breathLabel,
+                        // Live region so a screen-reader user gets the breath pacing too.
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Polite
+                        },
                         fontSize = 16.sp,
                         color = BreatheTextPrimary,
                         fontWeight = FontWeight.Medium,
@@ -228,10 +262,18 @@ fun PauseScreen(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
                                         .weight(1f)
+                                        // Was ~30dp tall, below the 48dp minimum target.
+                                        .heightIn(min = 48.dp)
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(if (isSelected) BreathePrimary.copy(alpha = 0.2f) else Color.Transparent)
                                         .border(1.dp, if (isSelected) BreathePrimary else BreatheDivider, RoundedCornerShape(12.dp))
-                                        .clickable { onReasonSelected(key) }
+                                        // toggleable, not clickable: TalkBack could not
+                                        // convey selected state from a plain click target.
+                                        .toggleable(
+                                            value = isSelected,
+                                            role = Role.Checkbox,
+                                            onValueChange = { onReasonSelected(key) }
+                                        )
                                         .padding(vertical = 8.dp)
                                 ) {
                                     Text(
@@ -258,9 +300,20 @@ fun PauseScreen(
                     }
                     TextButton(
                         onClick = onYes,
-                        modifier = Modifier.fillMaxWidth()
+                        enabled = canContinue,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     ) {
-                        Text("Continue to $appName", color = BreatheTextMuted, fontSize = 13.sp)
+                        Text(
+                            text = if (canContinue) {
+                                "Continue to $appName"
+                            } else {
+                                "Continue in ${remainingSeconds}s"
+                            },
+                            // BreatheTextMuted measures 2.94:1 on these cards, below the
+                            // WCAG AA 4.5:1 floor. Secondary passes at 6.8:1.
+                            color = if (canContinue) BreatheTextSecondary else BreatheTextMuted,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +20,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -151,7 +155,17 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .scale(scale)
-            .clickable { onClick() },
+            // toggleable with an explicit state description: the selected state was
+            // conveyed only by a check icon, which TalkBack announced as nothing at all
+            // in the unselected case.
+            .toggleable(
+                value = app.isBlocked,
+                role = Role.Checkbox,
+                onValueChange = { onClick() }
+            )
+            .semantics {
+                stateDescription = if (app.isBlocked) "Paused before opening" else "Not paused"
+            },
         shape = RoundedCornerShape(16.dp),
         border = if (app.isBlocked) androidx.compose.foundation.BorderStroke(2.dp, borderColor) else null,
         colors = CardDefaults.cardColors(
@@ -192,7 +206,7 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
                 )
                 Text(
                     text = formatUsageTime(app.usageTimeMinutes),
-                    color = if (app.usageTimeMinutes > 60) Color(0xFFFF8A80) else BreatheTextMuted,
+                    color = if (app.usageTimeMinutes > 60) BreatheWarning else BreatheTextMuted,
                     fontSize = 12.sp
                 )
             }
@@ -200,7 +214,9 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
             if (app.isBlocked) {
                 Icon(
                     Icons.Default.Check,
-                    contentDescription = "Blocked",
+                    // State is announced by stateDescription on the row; repeating it
+                    // here would make TalkBack say it twice.
+                    contentDescription = null,
                     tint = BreathePrimary,
                     modifier = Modifier.size(24.dp)
                 )

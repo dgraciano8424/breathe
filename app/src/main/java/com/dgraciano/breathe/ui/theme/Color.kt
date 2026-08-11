@@ -23,6 +23,10 @@ val BreatheTextMuted     = Color(0xFF78909C)
 
 val BreatheSand          = Color(0xFFF1E3D3) // Sandy accent color for tips/highlights
 
+// Semantic, kept separate from the accent palette. Was an inline literal repeated at
+// two call sites with no name.
+val BreatheWarning       = Color(0xFFFFAB91)
+
 val BreatheRingOuter = Color(0x1A4DB6AC)
 val BreatheRingMid   = Color(0x334DB6AC)
 val BreatheRingInner = Color(0x804DB6AC)
