@@ -18,10 +18,11 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): BreatheDatabase =
         Room.databaseBuilder(ctx, BreatheDatabase::class.java, "breathe.db")
-            .addMigrations(BreatheDatabase.MIGRATION_1_2, BreatheDatabase.MIGRATION_2_3)
+            // Deliberately no fallbackToDestructiveMigration: losing a user's history
+            // silently is worse than failing loudly in development.
+            .addMigrations(*BreatheDatabase.ALL_MIGRATIONS)
             .build()
 
     @Provides fun provideBlockedAppDao(db: BreatheDatabase) = db.blockedAppDao()
-    @Provides fun provideQuoteDao(db: BreatheDatabase) = db.quoteDao()
     @Provides fun provideInterventionEventDao(db: BreatheDatabase) = db.interventionEventDao()
 }

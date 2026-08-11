@@ -1,9 +1,19 @@
 package com.dgraciano.breathe.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "intervention_events")
+// Every query filters on timestamp, and several also on outcome/packageName. Without
+// these indices each one is a full table scan that degrades as history accumulates.
+@Entity(
+    tableName = "intervention_events",
+    indices = [
+        Index(value = ["timestamp"]),
+        Index(value = ["packageName", "timestamp"]),
+        Index(value = ["outcome", "timestamp"])
+    ]
+)
 data class InterventionEvent(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val packageName: String,

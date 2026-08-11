@@ -3,8 +3,11 @@ package com.dgraciano.breathe.data.repository
 import com.dgraciano.breathe.data.db.InterventionEventDao
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.data.model.InterventionEvent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import java.util.Calendar
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,19 +42,32 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
 
     suspend fun getTodayMinutesSaved(): Int = dao.getTotalMinutesSavedSince(startOfToday())
 
+    suspend fun getWeeklyMinutesSaved(): Int = dao.getTotalMinutesSavedSince(startOfWeek())
+
     suspend fun getTopAppsThisWeek(): List<AppStat> = dao.getTopApps(startOfWeek())
 
-    suspend fun getFocusStreak(): Int {
-        val all = dao.getAllOrdered()
-        var streak = 0
-        for (event in all) {
-            if (event.outcome == "DECLINED") streak++
-            else break
-        }
-        return streak
+    suspend fun getFocusStreak(): Int = withContext(Dispatchers.IO) {
+        dao.getCurrentDeclineStreak()
     }
 
     fun getRecentEvents(): Flow<List<InterventionEvent>> = dao.getRecent()
 
-    suspend fun recordEvent(event: InterventionEvent) = dao.insert(event)
+    suspend fun recordEvent(event: InterventionEvent) = withContext(Dispatchers.IO) {
+        dao.insert(event)
+        pruneOldEvents()
+    }
+
+    /**
+     * Keeps the table bounded. Previously it grew forever, which slowed every query and
+     * retained behavioural history indefinitely with no way for the user to clear it.
+     */
+    private suspend fun pruneOldEvents() {
+        val cutoff = System.currentTimeMillis() - RETENTION_MS
+        runCatching { dao.deleteOlderThan(cutoff) }
+    }
+
+    companion object {
+        /** One year is well beyond what any screen reads (longest window is a week). */
+        val RETENTION_MS = TimeUnit.DAYS.toMillis(365)
+    }
 }

@@ -33,8 +33,24 @@ interface InterventionEventDao {
     @Query("SELECT * FROM intervention_events ORDER BY timestamp DESC LIMIT 100")
     fun getRecent(): Flow<List<InterventionEvent>>
 
-    @Query("SELECT * FROM intervention_events ORDER BY timestamp DESC")
-    suspend fun getAllOrdered(): List<InterventionEvent>
+    /**
+     * Consecutive declines since the last time the user opened something.
+     *
+     * Replaces loading the entire table and counting a prefix in Kotlin; this is exact
+     * and served by the (outcome, timestamp) index.
+     */
+    @Query("""
+        SELECT COUNT(*) FROM intervention_events
+        WHERE outcome = 'DECLINED'
+          AND timestamp > (
+            SELECT COALESCE(MAX(timestamp), 0) FROM intervention_events WHERE outcome = 'OPENED'
+          )
+    """)
+    suspend fun getCurrentDeclineStreak(): Int
+
+    /** Retention: history older than the cutoff is of no use to any screen. */
+    @Query("DELETE FROM intervention_events WHERE timestamp < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long): Int
 
     @Query("SELECT COALESCE(SUM(minutesSaved), 0) FROM intervention_events WHERE outcome = 'DECLINED' AND timestamp > :since")
     suspend fun getTotalMinutesSavedSince(since: Long): Int
