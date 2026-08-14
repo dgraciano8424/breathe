@@ -7,7 +7,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,7 +65,7 @@ fun OnboardingScreen(
             onDismiss = { showDisclosure = false },
             onAgree = {
                 showDisclosure = false
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                openAccessibilitySettings(context)
             }
         )
     }
@@ -199,7 +201,13 @@ private fun AccessibilityDisclosureDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Scrollable because this dialog carries required disclosure text plus a
+            // three-step walkthrough, and minSdk is 26 — on a small screen the buttons
+            // would otherwise be pushed out of reach.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     "Breathe uses Android's accessibility service to detect which app has " +
                         "just come to the front. That is the only way to show your pause " +
@@ -221,11 +229,27 @@ private fun AccessibilityDisclosureDialog(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+
+                HorizontalDivider(color = BreatheDivider)
+
+                // Android does not let an app open its own accessibility page directly —
+                // that intent is permission-gated — so the last two taps are unavoidable.
+                // Showing them here is the only way to make the hand-off not feel like
+                // being dropped into a settings menu and abandoned.
+                Text(
+                    "On the next screen",
+                    color = BreatheTextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                SettingsStep(1, "Tap Installed apps (called Downloaded apps on some phones)")
+                SettingsStep(2, "Tap Breathe")
+                SettingsStep(3, "Turn the switch on, then come back here")
             }
         },
         confirmButton = {
             TextButton(onClick = onAgree) {
-                Text("I understand — open settings", color = BreathePrimary, fontWeight = FontWeight.Bold)
+                Text("Got it — take me there", color = BreathePrimary, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -234,6 +258,28 @@ private fun AccessibilityDisclosureDialog(
             }
         }
     )
+}
+
+/** A numbered step in the "on the next screen" walkthrough. */
+@Composable
+private fun SettingsStep(number: Int, text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .background(BreathePrimary.copy(alpha = 0.20f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "$number",
+                color = BreathePrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(text, color = BreatheTextSecondary, fontSize = 14.sp, lineHeight = 19.sp)
+    }
 }
 
 @Composable
