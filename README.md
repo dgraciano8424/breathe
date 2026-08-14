@@ -8,8 +8,8 @@ Built as a free alternative to [One Sec](https://one-sec.app), using only public
 
 ## How it works
 
-1. A foreground service polls `UsageStatsManager` every 500ms to detect which app is in the foreground
-2. When a blocked app is detected, a full-screen pause screen launches on top of it
+1. An `AccessibilityService` listens for window-state changes to detect which app has come to the foreground
+2. When a blocked app is detected, a full-screen pause is drawn in an overlay window on top of it
 3. The screen shows a breathing animation, a grounding tip, an optional "why am I opening this?" prompt, and two buttons
 4. **No, go back** → sends you home. **Yes, open [App]** → lets you through
 
@@ -27,8 +27,8 @@ The pause resets each time you leave and re-open the app, so it shows every time
 | DI | Hilt |
 | Database | Room (monitored apps + intervention history) |
 | Networking | None — the app is fully offline |
-| Background | Foreground Service + BroadcastReceiver (boot) |
-| Build | Gradle 8.7 + Kotlin DSL |
+| Background | AccessibilityService (system-bound, rebound after reboot) |
+| Build | Gradle 9.6.1 + Kotlin DSL |
 
 ---
 
@@ -39,15 +39,17 @@ app/src/main/java/com/dgraciano/breathe/
 ├── data/
 │   ├── db/          # Room DAOs + Database
 │   ├── model/       # BlockedApp, InterventionEvent entities
-│   ├── remote/      # Retrofit API + DTOs
 │   └── repository/  # AppRepository, StatsRepository
-├── di/              # Hilt modules (DB, Network, SystemService)
-├── service/         # AppMonitorService, ForegroundAppDetector, BootReceiver
+├── di/              # Hilt modules (Coroutines, Database, SystemService)
+├── service/         # BreatheAccessibilityService, SessionApprovalStore, SessionTimeHelper
+├── widget/          # PauseCountWidget (home-screen RemoteViews widget)
 └── ui/
     ├── onboarding/  # Permission setup screen
     ├── home/        # Monitored apps list
     ├── appselect/   # App picker
-    ├── pause/       # The breathing screen (PauseActivity + PauseScreen)
+    ├── pause/       # The breathing screen (PauseOverlayHost + PauseActivity + PauseScreen)
+    ├── stats/       # Insights and time reclaimed
+    ├── achievements/# Progress path
     ├── nav/         # Compose navigation graph
     └── theme/       # Colors, Theme
 ```
@@ -60,7 +62,9 @@ app/src/main/java/com/dgraciano/breathe/
 
 - Android Studio (latest stable)
 - Android phone running Android 8.0+ (API 26+)
-- A physical device — `UsageStatsManager` is unreliable on emulators
+- A physical device. Emulators reproduce neither overlay behaviour nor the OEM battery
+  managers that silently disable accessibility services, which is most of what can go
+  wrong here
 
 ### Run locally
 
@@ -72,19 +76,51 @@ Open the `breathe` folder in Android Studio. Wait for Gradle sync to complete, t
 
 ### Permissions
 
-The app requires one special permission that must be granted manually:
+Two special permissions must be granted manually. Interception does not work without
+both — the app needs to know an app opened, and to be allowed to draw over it.
 
-- **Usage Access** (`PACKAGE_USAGE_STATS`) — Settings → Apps → Special App Access → Usage Access → Breathe → Allow
+- **Accessibility access** — Settings → Accessibility → Breathe → On. Detects which app
+  came to the foreground. Scoped to window-state events with
+  `canRetrieveWindowContent="false"`, so it cannot read screen contents.
+- **Display over other apps** (`SYSTEM_ALERT_WINDOW`) — Settings → Apps → Special App
+  Access → Display over other apps → Breathe → Allow. Draws the pause over the app you
+  are opening.
 
-The onboarding screen walks you through this on first launch.
+One further permission is optional:
+
+- **Usage Access** (`PACKAGE_USAGE_STATS`) — Settings → Apps → Special App Access →
+  Usage Access → Breathe → Allow. Only enriches the stats screens with time spent per
+  app. Everything else works without it.
+
+The onboarding screen walks you through these on first launch, and shows a disclosure
+explaining what the accessibility service does before sending you to Settings.
 
 ---
 
 ## Key concepts (for learning)
 
-**Why a foreground service?** Android kills background processes aggressively to save battery. A foreground service stays alive but must show a persistent notification — Android's way of being transparent with the user.
+**Why an accessibility service?** Android kills background processes aggressively, so
+something has to stay alive to notice app launches. The first version used a foreground
+service polling `UsageStatsManager` every 500ms — which worked, but meant a permanent
+notification, a timer running whenever the screen was on, and a `specialUse` foreground
+service type that Play makes you justify with a demo video.
 
-**Why poll instead of listen?** Android doesn't provide a public event/callback for "app X just launched." `UsageStatsManager` is a pull API — you ask it "what happened recently?" on a timer.
+An accessibility service is bound and kept alive by the system itself, and rebound after
+reboot, so it needs no foreground service, no boot receiver, and none of the three
+permissions those required. The trade is scrutiny: accessibility is a powerful API, Play
+reviews it closely, and users are right to be cautious. The service is scoped as narrowly
+as the feature allows — window-state events only, no window-content retrieval — so it can
+see *which* app opened and nothing inside it.
+
+**Why listen instead of poll?** Android has no public callback for "app X just launched",
+so the original design polled: `UsageStatsManager` is a pull API you ask "what happened
+recently?" on a timer. Polling has two costs — the timer, and latency, since the pause
+could arrive up to half an interval after the app. Accessibility window events are pushed
+as the window changes, so the pause can be up before the app draws its first frame.
+
+**Why not `isAccessibilityTool`?** Because it would be a lie. That flag marks services
+built to assist users with disabilities; Play policy explicitly excludes monitoring apps,
+and claiming it falsely risks losing the developer account.
 
 **Why the repository pattern?** The UI doesn't need to know if data comes from a database or an API. The repository decides. This makes screens simple and logic testable.
 

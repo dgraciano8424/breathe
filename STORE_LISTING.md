@@ -40,13 +40,14 @@ A breath between the reach and the scroll. Free, private, and fully offline.
 ```
 You reach for your phone without deciding to. Breathe puts one calm moment between the reach and the scroll.
 
-Choose the apps that pull you in. When you open one, Breathe surfaces a quiet full-screen pause — a breathing rhythm to follow and an honest question: do you actually want this right now?
+Choose the apps that pull you in. When you open one, Breathe surfaces a quiet full-screen pause — a breathing rhythm to follow, something grounding to read, and an honest question: do you actually want this right now?
 
 Then you choose. Continue, or do something else. Both answers are fine. The point is that you made one.
 
 WHAT A PAUSE LOOKS LIKE
 
 • A breathing animation to settle into, set in a calm ocean palette
+• A short grounding tip to read while you breathe
 • A gentle note of how many times you have already opened this app today
 • Four honest reasons to tap, if you want to name it: Bored, Habit, Escaping, Curious
 • A suggestion of something else you could do with the time
@@ -94,7 +95,7 @@ Breathe does not lock you out, shame you, or gamify your attention. There is no 
 Requires Android 8.0 or newer.
 ```
 
-3,397 characters — inside the 4,000 limit, with room to add anything you want.
+3,479 characters — inside the 4,000 limit, with room to add anything you want.
 
 ### Why the accessibility section is that long
 
