@@ -136,20 +136,25 @@ None of this has been run on real hardware. In rough order of risk:
 2. **Is the accessibility service actually enabled and surviving?** Enable it in
    Settings, confirm the home banner clears, then reboot and confirm the system
    rebinds it without opening the app.
-3. **Does the v5 migration survive an upgrade?** Install over an existing build
+3. **Does an approval survive the notification shade and the keyboard?** Continue
+   into a blocked app, then pull the shade down and dismiss it. Then open the
+   keyboard. If the pause reappears either time, the service is treating a system
+   window as an app switch and revoking the session approval — see blocker 2 in
+   `APP_AUDIT.md`. Cheap to check and an obvious irritant if real, so do it early.
+4. **Does the v5 migration survive an upgrade?** Install over an existing build
    rather than a clean one, and confirm previously monitored apps are still there
    with their pause durations, and that dropping the quotes table did not disturb
    anything else.
-4. **Does the widget work?** Long-press the home screen, add it, then take a pause
+5. **Does the widget work?** Long-press the home screen, add it, then take a pause
    and confirm the count moves.
-5. **Does the release build behave like the debug build?** R8 changes things.
+6. **Does the release build behave like the debug build?** R8 changes things.
    Sideload `assembleRelease` output and repeat step 1 — reflective paths that
    survive in debug can still break after shrinking. The accessibility service is
    instantiated by name, so a missing keep rule breaks detection in release only.
-6. **Behaviour changes from the `targetSdk` bump**, on an Android 15 or 16 device:
+7. **Behaviour changes from the `targetSdk` bump**, on an Android 15 or 16 device:
    edge-to-edge is enforced rather than opt-in, so check nothing is drawn under the
    status or navigation bars — particularly the pause screen, which is full-bleed.
    Confirm the overlay still draws.
-7. **Onboarding on an older device** (API 26–28) if you can find one, since that
+8. **Onboarding on an older device** (API 26–28) if you can find one, since that
    path had an API-level crash that was only recently fixed. This path changed with
    the accessibility rewrite — the prominent disclosure and consent flow are new.
