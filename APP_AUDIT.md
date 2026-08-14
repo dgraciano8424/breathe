@@ -69,7 +69,7 @@ Open:
 
 Nothing else is outstanding from the original audit. What remains beyond the items above is device verification (blockers 1 and 2) and the roadmap items below.
 
-**Minor, recorded not fixed:** three pieces of dead weight left by the rewrite — `buildConfig = true` in `app/build.gradle.kts:74` with nothing referencing `BuildConfig`, the unreferenced `res/drawable/ic_notification.xml`, and the `notification_title` / `notification_channel_name` strings with no notification to name. Also two stale source comments, listed in `CONCERNS.md`. None affect behaviour; all are build or resource changes rather than documentation, so they were left for a deliberate pass.
+**Minor, now cleared (2026-08-14):** the dead weight left by the rewrite — the `buildConfig = true` flag with nothing referencing `BuildConfig`, the unreferenced `res/drawable/ic_notification.xml`, the `notification_title` / `notification_channel_name` strings, and two stale source comments. Each was verified unreferenced before removal and the full pass re-run afterwards. See "Verification status" for the numbers.
 
 Done:
 
@@ -120,7 +120,7 @@ Done:
 
 ## Verification status
 
-- `./gradlew lintDebug testDebugUnitTest assembleDebug` passes as of 2026-08-14, re-run against `90f7e30`: **43 tests across 4 classes, 0 failures, 0 skipped**; debug APK builds; lint reports **0 errors and 50 warnings**. The test count is down from 67 across 6 classes — see blocker 6 for what was lost and why.
+- `./gradlew lintDebug testDebugUnitTest assembleDebug` passes as of 2026-08-14: **43 tests across 4 classes, 0 failures, 0 skipped**; debug APK builds; lint reports **0 errors and 47 warnings**. The test count is down from 67 across 6 classes — see blocker 6 for what was lost and why. Warnings fell from 50 to 47 when the dead resources were removed, which is the only change; no warning was suppressed.
 - Requires `JAVA_HOME` pointing at a JDK 17 — the Android Studio JBR at `C:\Program Files\Android\Android Studio\jbr` works; the shell has no `java` on `PATH` by default.
 - The original audit could not compile at all (no Android SDK configured). The SDK is now present at `local.properties: sdk.dir`, so the earlier "static review only" caveat no longer applies.
 - Lint is now error-free. It had been hiding a real crash: `OnboardingViewModel` called `AppOpsManager.unsafeCheckOpNoThrow`, which only exists from API 29, against a `minSdk` of 26 — onboarding would have thrown `NoSuchMethodError` on API 26-28. Now version-gated with the pre-29 `checkOpNoThrow`.

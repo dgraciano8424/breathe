@@ -60,7 +60,7 @@ android {
             }
         }
         // Deliberately no applicationIdSuffix on debug: it would install as a separate
-        // app, and the schema-v4 migration still needs to be exercised by upgrading an
+        // app, and the schema-v5 migration still needs to be exercised by upgrading an
         // existing install. Add one once that verification is done.
     }
 
@@ -71,8 +71,6 @@ android {
 
     buildFeatures {
         compose = true
-        // Needed so network logging can be gated to debug builds.
-        buildConfig = true
     }
 
     testOptions {

@@ -95,12 +95,10 @@ rewrite and the accessibility rewrite, and every version number in it was stale.
 - Release signing read from a gitignored `keystore.properties`; absent, the release build still compiles and comes out unsigned
 - Kotlin code style: `official` (set in `gradle.properties`)
 
-**Known stale build setting:** `buildFeatures { buildConfig = true }` in
-`app/build.gradle.kts` is commented "Needed so network logging can be gated to debug
-builds". No source file references `BuildConfig` any more — the network logging it
-existed for was deleted with the network stack. The flag appears to be dead and is a
-candidate for removal, but it is a build change rather than a doc change and has not
-been made.
+`buildFeatures` now enables `compose` only. The `buildConfig = true` flag was removed on
+2026-08-14: it existed solely to gate network logging to debug builds, and both the
+logging and the network stack are gone. `BuildConfig.java` is confirmed no longer
+generated, and no source references it.
 
 **Key `gradle.properties` settings:**
 - `org.gradle.jvmargs=-Xmx1024m -Dfile.encoding=UTF-8`

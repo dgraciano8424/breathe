@@ -113,13 +113,20 @@ an accessibility service that cannot read window content.
 
 ## Dead code and stale comments
 
-Small, safe to clear, found while revising these documents. None have been changed —
-they are recorded here rather than fixed silently:
+~~Found while revising these documents.~~ **All cleared 2026-08-14.** Each was verified
+unreferenced before removal, and the full pass (`lintDebug testDebugUnitTest assembleDebug
+assembleRelease`) was re-run afterwards: 43 tests still pass, lint warnings dropped from
+50 to 47, and the release APK is unchanged at 1.03 MB.
 
-- `app/build.gradle.kts:74` — `buildConfig = true`, commented "Needed so network logging can be gated to debug builds". No source file references `BuildConfig` any more; the network logging it existed for was deleted.
-- `app/src/main/res/drawable/ic_notification.xml` — unreferenced anywhere in `app/src/` since the foreground-service notification was removed. Resource shrinking drops it from release builds, so this is tidiness, not size.
-- `ui/pause/PauseOverlayHost.kt:105` — the KDoc on `isShowing` describes it as "read by the monitor loop from its polling thread". There is no monitor loop and no polling thread; it is read from the accessibility event callback.
-- `res/values/strings.xml` — `notification_title` and `notification_channel_name` remain, with no notification to name.
+- `app/build.gradle.kts` — `buildConfig = true`, commented "Needed so network logging can be gated to debug builds". Removed; nothing referenced `BuildConfig`, and `BuildConfig.java` is confirmed no longer generated
+- `app/src/main/res/drawable/ic_notification.xml` — deleted; unreferenced since the foreground-service notification was removed
+- `res/values/strings.xml` — `notification_title` and `notification_channel_name` deleted; there is no notification to name
+- `ui/pause/PauseOverlayHost.kt` — the KDoc on `isShowing` described it as "read by the monitor loop from its polling thread". Rewritten to describe the accessibility event callback that actually reads it
+- `app/build.gradle.kts` — the debug `applicationIdSuffix` comment referred to the schema-v4 migration; the schema is now v5
+
+The reasoning behind that comment is unchanged and still worth honouring: debug keeps the
+release `applicationId` so an upgrade-in-place can exercise the migration, which no one
+has done yet.
 
 ---
 

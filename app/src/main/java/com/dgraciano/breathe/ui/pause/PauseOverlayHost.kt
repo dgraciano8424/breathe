@@ -102,9 +102,10 @@ class PauseOverlayHost @Inject constructor(
     private var owners: OverlayOwners? = null
 
     /**
-     * Read by the monitor loop from its polling thread. The blocked app stays in the
-     * foreground behind the overlay, so without this the loop would immediately decide
-     * it needs to intervene again.
+     * Read from the accessibility service's event callback. The overlay draws over the
+     * blocked app without displacing it, so that app keeps raising window events while
+     * the pause is up; without this the service would immediately decide to intervene
+     * again.
      */
     @Volatile
     var isShowing: Boolean = false

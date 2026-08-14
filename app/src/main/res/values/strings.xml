@@ -1,7 +1,5 @@
 <resources>
     <string name="app_name">Breathe</string>
-    <string name="notification_title">Breathe is active</string>
-    <string name="notification_channel_name">Breathe Monitor</string>
     <string name="onboarding_title">Welcome to Breathe</string>
     <string name="onboarding_body">Breathe adds a mindful pause before you open distracting apps.</string>
     <string name="grant_usage_access">Grant Usage Access</string>

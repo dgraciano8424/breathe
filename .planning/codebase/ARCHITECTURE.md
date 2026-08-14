@@ -257,11 +257,10 @@ app's first network egress.
 
 ## Known stale comments in source
 
-Found while revising these documents; recorded here rather than silently edited:
-
-- `PauseOverlayHost.kt:105` — documents `isShowing` as "read by the monitor loop from its polling thread". There is no monitor loop and no polling thread; it is read from the accessibility event callback
-- `app/build.gradle.kts:74` — `buildConfig = true` is commented "Needed so network logging can be gated to debug builds". No source references `BuildConfig` any more
-- `app/src/main/res/drawable/ic_notification.xml` — unreferenced since the foreground service notification was removed
+None outstanding. The set found while revising these documents — the `isShowing` KDoc
+describing a polling thread, the `buildConfig` flag justified by deleted network logging,
+the orphaned notification icon and strings — was cleared on 2026-08-14. See the "Dead code
+and stale comments" section of `CONCERNS.md` for the list and what verified each removal.
 
 ---
 
