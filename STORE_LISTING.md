@@ -7,6 +7,13 @@ Console rejects an over-length field rather than truncating it.
 Everything here describes behaviour that exists in the tree today. Nothing is
 aspirational: if a claim below stops being true, change the claim.
 
+> Rewritten against `90f7e30`, which replaced the polling foreground service with an
+> AccessibilityService and deleted the quote feature outright. An earlier draft of this
+> file advertised the quotes, explained a foreground-service notification, and named
+> usage access as the trigger for the pause. All three are now wrong. `PRIVACY.md` and
+> `RELEASE.md` are the sources of truth for the permission wording — keep the three
+> documents saying the same thing.
+
 ## Short description (limit 80)
 
 ```
@@ -18,28 +25,28 @@ A mindful pause before you open the apps that pull you in. No ads, no tracking.
 ### Alternates, if the above reads wrong to you
 
 ```
-Pause before you open the apps that pull you in. Private, free, no tracking.
+Pause before you open the apps that pull you in. Fully offline, nothing tracked.
 ```
-76 characters.
+Exactly 80 characters — at the limit, with no room to edit. Leans on the app having
+no internet access at all.
 
 ```
-A breath between the reach and the scroll. Free, private, and ad-free.
+A breath between the reach and the scroll. Free, private, and fully offline.
 ```
-70 characters.
+76 characters.
 
 ## Full description (limit 4000)
 
 ```
 You reach for your phone without deciding to. Breathe puts one calm moment between the reach and the scroll.
 
-Choose the apps that pull you in. When you open one, Breathe surfaces a quiet full-screen pause — a breathing rhythm to follow, a line worth reading, and an honest question: do you actually want this right now?
+Choose the apps that pull you in. When you open one, Breathe surfaces a quiet full-screen pause — a breathing rhythm to follow and an honest question: do you actually want this right now?
 
 Then you choose. Continue, or do something else. Both answers are fine. The point is that you made one.
 
 WHAT A PAUSE LOOKS LIKE
 
 • A breathing animation to settle into, set in a calm ocean palette
-• A short reflective quote, different each time
 • A gentle note of how many times you have already opened this app today
 • Four honest reasons to tap, if you want to name it: Bored, Habit, Escaping, Curious
 • A suggestion of something else you could do with the time
@@ -48,7 +55,7 @@ WHAT A PAUSE LOOKS LIKE
 SET IT UP THE WAY YOU WANT
 
 • Pick any apps on your phone — the picker highlights what you have used most this week, so the ones worth pausing are easy to find
-• Set a different pause length for each app. Give the ones that pull hardest a longer breath before the button unlocks
+• Set a different pause length for each app. Give the ones that pull hardest a longer breath before the continue button unlocks
 • Add or remove apps whenever you like
 
 SEE WHAT IT ADDS UP TO
@@ -61,20 +68,24 @@ SEE WHAT IT ADDS UP TO
 
 PRIVATE BY DESIGN
 
-Breathe collects nothing. There are no accounts, no analytics, no advertising, and no crash reporting. Your list of apps, your pauses, and your reasons live in a database on your phone and are never uploaded. Device backup is switched off for that data, so it is not swept into a cloud backup or a phone-to-phone transfer either. Uninstalling deletes all of it.
+Breathe has no internet access. It does not request the internet permission at all, which means it is not merely unwilling to send your data anywhere — it is incapable of it. There are no accounts, no analytics, no advertising, and no crash reporting.
 
-The app makes one network request, and only one: fetching quotation text from the public ZenQuotes service. It carries nothing about you, your device, or the apps you use.
+Your list of apps, your pauses, and your reasons live in a database on your phone. Device backup is switched off for that data, so it is not swept into a cloud backup or a phone-to-phone transfer either. Uninstalling deletes all of it.
 
 Breathe is free. There is nothing to buy inside it and nothing to subscribe to.
 
-PERMISSIONS, AND WHY
+ABOUT THE ACCESSIBILITY PERMISSION
 
-Breathe asks for two permissions that Android treats as sensitive. Here is exactly what each is for.
+Breathe asks for accessibility access, and you are right to be careful about that — it is a powerful permission and plenty of apps abuse it. Here is exactly what Breathe does with it.
 
-• Usage access — so Breathe can tell which app you just opened, which is the only way it knows a pause is due. It also powers your statistics. Read on your device, never transmitted.
+It listens for one thing: the name of the app that just came to the front. That is the only way on Android to know a pause is due, and knowing it as the app opens is what lets the pause appear before the feed draws.
+
+Breathe cannot read the contents of your screen. The service is configured to receive window-change events only, with screen-content retrieval switched off, so the text of your messages, your passwords, and everything you type are not available to it. It never taps, types, or acts on your behalf. And with no internet permission, nothing it observes can leave your phone.
+
+THE OTHER PERMISSIONS
+
 • Display over other apps — so the pause can appear over the app you are opening. Without it, the pause cannot reliably show up at all.
-
-It also runs a foreground service, which is why you will see a quiet ongoing notification: that service is what notices when you open a paused app. Android requires that notification, and it is a fair trade — an app watching for launches should say so.
+• Usage access — optional. It only enriches your statistics with time spent per app. Breathe works fully without it, and will not nag you for it.
 
 A NOTE ON WHAT THIS IS NOT
 
@@ -83,8 +94,15 @@ Breathe does not lock you out, shame you, or gamify your attention. There is no 
 Requires Android 8.0 or newer.
 ```
 
-3,085 characters — comfortably inside the 4,000 limit, with room to add anything
-you want.
+3,397 characters — inside the 4,000 limit, with room to add anything you want.
+
+### Why the accessibility section is that long
+
+It is the single biggest reason a privacy-minded user bounces off the install page, and
+Play reviews accessibility-permission apps carefully. Saying plainly what the service
+can and cannot see — and pairing it with the absent internet permission, which is
+checkable — is worth more than the space it costs. Shorten it only if you are willing
+to trade install-page trust for room you do not currently need.
 
 ## Still to produce (needs a running app)
 
@@ -97,12 +115,18 @@ you want.
 
 ## Claims to re-check before publishing
 
-These are true as of this draft. They are the ones that would become false first:
+These are true as of `90f7e30`. They are the ones that would become false first:
 
-- "no advertising, no analytics, no crash reporting" — stays true only while no SDK is
-  added. Adding Crashlytics or similar makes this false and changes the Data safety form.
-- "one network request ... ZenQuotes" — see `PRIVACY.md`, which must agree with this.
+- "no internet access ... does not request the internet permission" — the strongest
+  claim here and the easiest to break. Re-adding `INTERNET` for any reason falsifies it,
+  changes the Data safety form, and contradicts `PRIVACY.md`.
+- "cannot read the contents of your screen" — depends on
+  `canRetrieveWindowContent="false"` and the window-state-only event filter in
+  `app/src/main/res/xml/accessibility_service_config.xml`. Verify before publishing.
+- "no analytics, no advertising, no crash reporting" — one SDK away from false.
+- "Usage access — optional ... works fully without it" — true since `90f7e30`. It was
+  not true before.
 - "Requires Android 8.0 or newer" — tracks `minSdk 26`.
-- The described pause behaviour has not yet been observed on hardware. See the device
-  checklist in `RELEASE.md`; a listing describing a pause that does not appear is the
-  worst version of this problem.
+- The described pause behaviour still has not been observed on hardware, and detection
+  was rebuilt since the last audit. See the device checklist in `RELEASE.md`; a listing
+  describing a pause that does not appear is the worst version of this problem.

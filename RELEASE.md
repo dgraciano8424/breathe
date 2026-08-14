@@ -12,8 +12,8 @@ true before a submission is honest.
       targets API 36 (Android 16), which should clear the bar, but the requirement
       moves every August — check rather than assume. Note this was raised from 34
       without a device pass, so the Android 15 and 16 behaviour changes it brings
-      (enforced edge-to-edge, stricter foreground-service and overlay rules) are
-      unverified. They are in the device checklist below.
+      (enforced edge-to-edge, stricter overlay rules) are unverified. They are in
+      the device checklist below.
 - [ ] **Turn on GitHub Pages** (one switch, then the URL is live). The page itself is
       committed at `docs/index.html`. In the repo: **Settings → Pages → Build and
       deployment → Source: "Deploy from a branch" → Branch: `main`, folder:
@@ -67,13 +67,11 @@ the store arrives as unreadable obfuscated names.
 ## What the build already handles
 
 - R8 code shrinking and resource shrinking, with keep rules for the reflective
-  paths (Gson DTOs, Room entities, Retrofit, the widget the system instantiates
-  by name).
+  paths (Room entities, the accessibility service and the widget, both of which the
+  system instantiates by name).
 - `Log.d`/`Log.v` stripped from release builds; warnings and errors kept.
 - Line numbers preserved for deobfuscation.
-- Network logging gated to debug builds.
 - Backup disabled and the database excluded from cloud backup and device transfer.
-- Foreground service type declared as `specialUse` with its subtype property.
 
 ## Play Console answers
 
@@ -142,14 +140,16 @@ None of this has been run on real hardware. In rough order of risk:
    rather than a clean one, and confirm previously monitored apps are still there
    with their pause durations, and that dropping the quotes table did not disturb
    anything else.
-3. **Does the widget work?** Long-press the home screen, add it, then take a pause
+4. **Does the widget work?** Long-press the home screen, add it, then take a pause
    and confirm the count moves.
-4. **Does the release build behave like the debug build?** R8 changes things.
+5. **Does the release build behave like the debug build?** R8 changes things.
    Sideload `assembleRelease` output and repeat step 1 — reflective paths that
-   survive in debug can still break after shrinking.
-5. **Behaviour changes from the `targetSdk` bump**, on an Android 15 or 16 device:
+   survive in debug can still break after shrinking. The accessibility service is
+   instantiated by name, so a missing keep rule breaks detection in release only.
+6. **Behaviour changes from the `targetSdk` bump**, on an Android 15 or 16 device:
    edge-to-edge is enforced rather than opt-in, so check nothing is drawn under the
    status or navigation bars — particularly the pause screen, which is full-bleed.
-   Confirm the foreground service still starts and the overlay still draws.
-6. **Onboarding on an older device** (API 26–28) if you can find one, since that
-   path had an API-level crash that was only recently fixed.
+   Confirm the overlay still draws.
+7. **Onboarding on an older device** (API 26–28) if you can find one, since that
+   path had an API-level crash that was only recently fixed. This path changed with
+   the accessibility rewrite — the prominent disclosure and consent flow are new.
