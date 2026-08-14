@@ -116,13 +116,16 @@ specialUse justification and its demo-video requirement.
 `QUERY_ALL_PACKAGES` is deliberately **not** declared — the app uses a `<queries>`
 launcher-intent filter instead, which needs no justification.
 
-### Store listing, still to write
+### Store listing
 
-- [ ] Short description (80 characters)
-- [ ] Full description (4000 characters)
+Copy is drafted in `STORE_LISTING.md` — paste-ready, with character counts checked
+against Play's limits and a list of the claims that would go stale first.
+
+- [x] Short description (80 characters) — drafted, 79 chars, with two alternates
+- [x] Full description (4000 characters) — drafted, 3,085 chars
 - [ ] Feature graphic, 1024×500
 - [ ] Phone screenshots, at least two — the pause screen and the home screen are
-      the obvious pair
+      the obvious pair. Blocked on a device run, same as everything else visual.
 - [ ] App category and content rating questionnaire
 
 ## Device verification (outstanding)
