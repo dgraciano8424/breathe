@@ -30,6 +30,17 @@ class OnboardingViewModel @Inject constructor(
 
     init { refreshPermissionState() }
 
+    /**
+     * Whether interception can actually work: accessibility to notice the launch, overlay
+     * to draw the pause over it.
+     *
+     * Usage access is deliberately excluded. It became optional when detection moved off
+     * `UsageStatsManager` and now only enriches the stats screens, so treating it as part
+     * of setup would send a fully working install back to onboarding.
+     */
+    fun isSetupComplete(): Boolean =
+        _hasAccessibility.value && _hasOverlayPermission.value
+
     fun refreshPermissionState() {
         _hasUsagePermission.value = checkUsagePermission()
         _hasOverlayPermission.value = checkOverlayPermission()

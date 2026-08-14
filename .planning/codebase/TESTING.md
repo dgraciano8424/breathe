@@ -33,19 +33,25 @@ has no `java` on `PATH`.
 
 ## Current Test Coverage State
 
-**43 tests across 4 classes**, all passing as of 2026-08-14:
+**48 tests across 5 classes**, all passing as of 2026-08-14:
 
 | Class | Tests | Covers |
 |---|---|---|
 | `data/repository/AppRepositoryTest.kt` | 8 | Blocked-app CRUD and pause-length reads |
 | `data/repository/StatsRepositoryTest.kt` | 7 | Aggregations behind the stats screens |
 | `service/SessionTimeHelperTest.kt` | 10 | Session-average estimation from usage events, cache TTL, bounded scan |
+| `ui/home/HomeViewModelTest.kt` | 5 | Blocked apps paired with usage minutes, aggregate not re-run per emission, missing usage access degrading to zeros |
 | `ui/pause/PauseViewModelTest.kt` | 18 | Pause state, reason capture, outcome recording, approval and widget refresh |
 
-**This is down from 67 tests across 6 classes.** `QuoteRepositoryTest` (160 lines) and
-`ForegroundAppDetectorTest` (250 lines) were deleted in `90f7e30` with the code they
+**Still short of the 67 across 6 classes it was before `90f7e30`.** `QuoteRepositoryTest`
+(160 lines) and `ForegroundAppDetectorTest` (250 lines) were deleted with the code they
 covered. Deleting tests for deleted code is correct; the problem is that detection was
 *reimplemented*, not removed, and its replacement arrived with no tests at all.
+
+`HomeViewModelTest` is worth noting as a pattern rather than a line item: the class was
+untestable while it pulled `UsageStatsManager` out of an injected `Context`, and became
+testable the moment that dependency came from `SystemServiceModule` instead. Where a
+class here has no tests, the injection seam is usually the reason.
 
 ### The gap that matters
 
@@ -161,7 +167,7 @@ is what currently gates release.
 
 ## Key Gaps
 
-- **No tests for `BreatheAccessibilityService`** — the highest-risk class in the project, and most of it is testable without a device. See above
+- **No tests for `BreatheAccessibilityService`** — the highest-risk class in the project, and most of it is testable without a device. See above. This is now the single largest gap, since `HomeViewModel` was covered on 2026-08-14
 - **No instrumented tests at all** — in particular no migration test, against a schema that has moved 1→5 and dropped a table
 - **No Compose UI test dependency** — `ui-test-junit4` and `ui-test-manifest` are absent from `libs.versions.toml`
 - **No Hilt testing dependency** — `hilt-android-testing` is not declared; Hilt injection in instrumented tests would need it or manual setup

@@ -39,7 +39,7 @@ breathe/                                  # Project root
 │       │       ├── mipmap-anydpi-v26/    # Adaptive launcher icon
 │       │       ├── values/               # strings.xml, themes.xml
 │       │       └── xml/                  # accessibility_service_config, widget info, backup rules
-│       ├── test/                         # JVM unit tests — 43 tests across 4 classes
+│       ├── test/                         # JVM unit tests — 48 tests across 5 classes
 │       └── androidTest/                  # Instrumented tests — still empty
 ├── .planning/codebase/                   # These documents
 ├── docs/                                 # Published privacy policy (GitHub Pages, /docs on main)
@@ -133,7 +133,7 @@ breathe/                                  # Project root
 - `Routes` in `ui/nav/NavGraph.kt`: `onboarding`, `home`, `app_select`, `stats`, `achievements`
 
 **Testing:**
-- `app/src/test/`: JVM unit test root — `AppRepositoryTest`, `StatsRepositoryTest`, `SessionTimeHelperTest`, `PauseViewModelTest`
+- `app/src/test/`: JVM unit test root — `AppRepositoryTest`, `StatsRepositoryTest`, `SessionTimeHelperTest`, `HomeViewModelTest`, `PauseViewModelTest`
 - `app/src/androidTest/`: Instrumented test root — still empty
 
 ## Naming Conventions

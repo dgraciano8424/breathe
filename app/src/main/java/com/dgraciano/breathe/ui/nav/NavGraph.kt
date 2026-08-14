@@ -3,8 +3,7 @@ package com.dgraciano.breathe.ui.nav
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,10 +27,17 @@ object Routes {
 fun BreatheNavGraph() {
     val nav = rememberNavController()
     val onboardingViewModel: OnboardingViewModel = hiltViewModel()
-    val hasUsage by onboardingViewModel.hasUsagePermission.collectAsState()
 
-    // Determine starting destination based on permission
-    val startDest = if (hasUsage) Routes.HOME else Routes.ONBOARDING
+    // Keyed on the two permissions interception actually needs. It used to key on usage
+    // access, which has been optional since detection moved to the accessibility service —
+    // so anyone who declined it landed here on every launch despite a working setup.
+    //
+    // Remembered because NavHost reads startDestination once. Recomputing it later cannot
+    // re-route anything; it would only make the graph disagree with itself. The ViewModel
+    // refreshes permission state in its init, so this reads a settled value.
+    val startDest = remember {
+        if (onboardingViewModel.isSetupComplete()) Routes.HOME else Routes.ONBOARDING
+    }
 
     NavHost(
         navController = nav,

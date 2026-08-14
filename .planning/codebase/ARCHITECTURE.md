@@ -207,26 +207,18 @@ it**, which is why `HomeViewModel` reports its state rather than controlling it
 ### Direct context injection into ViewModel
 
 **What happens:** `HomeViewModel`, `AppSelectViewModel` and `OnboardingViewModel` each
-take `@ApplicationContext val context: Context`. `HomeViewModel.loadAppsWithStats()`
-(`ui/home/HomeViewModel.kt:63-77`) then calls `context.getSystemService(USAGE_STATS_SERVICE)`
-directly — even though `SystemServiceModule` exists specifically to provide
-`UsageStatsManager`.
+take `@ApplicationContext val context: Context`.
 **Why it's wrong here:** it couples the ViewModel to framework classes and bypasses the
-seam that would make it testable. `HomeViewModel` has no tests, and this is a large part
-of why.
-**Do this instead:** inject `UsageStatsManager` from `SystemServiceModule`, or extract the
-aggregation behind a helper the way `SessionTimeHelper` does.
-
-### Re-running an aggregate inside a Flow collector
-
-**What happens:** `loadAppsWithStats()` runs a 7-day `queryAndAggregateUsageStats` **inside**
-`repo.getBlockedApps().collect { }`, so the full aggregate is recomputed on every emission —
-including every time the user adds, removes, or re-times a single app.
-**Why it's wrong here:** the work does not depend on which apps changed, and it is the
-same class of problem the audit already fixed once in `SessionTimeHelper` (bounded window,
-cached with a TTL).
-**Do this instead:** compute the usage map once per refresh and combine it with the Flow,
-or reuse `SessionTimeHelper`'s cache.
+injection seam, which is usually why a class here has no tests.
+**Worked example, now fixed:** `HomeViewModel` used to call
+`context.getSystemService(USAGE_STATS_SERVICE)` directly despite `SystemServiceModule`
+existing to provide `UsageStatsManager`. Injecting it instead is what made
+`HomeViewModelTest` possible — the class went from untestable to five tests without any
+other structural change. That is the argument for the pattern in miniature.
+**Still applies to:** the remaining `Context` uses — `PackageManager` in
+`AppSelectViewModel`, `AppOpsManager` and `Settings` in `OnboardingViewModel`, and the
+permission checks in `HomeViewModel.refreshMonitoringState()`. Extract them behind
+injectable wrappers the way `SessionTimeHelper` wraps usage stats.
 
 ### No repository interface abstractions
 

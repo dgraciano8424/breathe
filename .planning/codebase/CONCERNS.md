@@ -13,12 +13,11 @@ covers the smaller things that never rose to blocker level.
 
 ## Open — correctness
 
-**Onboarding keys its start destination on the one permission that is now optional:**
-- Issue: `BreatheNavGraph` computes `startDest = if (hasUsage) Routes.HOME else Routes.ONBOARDING` (`ui/nav/NavGraph.kt:34`). Since `90f7e30`, usage access is optional — the app is fully functional without it. A user who granted accessibility and overlay but declined usage access starts every cold launch on the onboarding screen.
-- Mitigating: `OnboardingScreen` has a `LaunchedEffect(hasAccessibility, hasOverlay)` that navigates to `HOME` once both real permissions are present, so the user is not trapped. But `startDestination` is only read at initial composition, so the result is an onboarding flash on every launch for anyone who skipped the optional permission.
-- Files: `ui/nav/NavGraph.kt:34`, `ui/onboarding/OnboardingScreen.kt:53-59`
-- Impact: Cosmetic but constant, and it signals "setup incomplete" to a user whose setup is complete.
-- Fix approach: Key the start destination on `BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)` — the same pair `HomeViewModel.isMonitoringActive` already uses. Better still, persist an `onboardingComplete` flag; there is still no DataStore or SharedPreferences anywhere in the codebase, so permission state remains a proxy for "has been onboarded".
+**Permission state is still a proxy for "has been onboarded":**
+- Issue: there is no DataStore or SharedPreferences anywhere in the codebase, so whether onboarding has been completed is inferred from whether permissions are currently granted.
+- Note: the sharp edge of this is fixed. `BreatheNavGraph` used to infer it from usage access, which became optional in `90f7e30`, so declining an optional permission sent a working install back to setup. The predicate now lives in `OnboardingViewModel.isSetupComplete()` and reads accessibility plus overlay.
+- Residual impact: a user who revokes a permission is returned to onboarding, which is arguably correct — that user does need to re-grant it — but it is inference, not memory. If onboarding ever gains steps that are not permission grants, the inference breaks.
+- Fix approach: persist an `onboardingComplete` flag with DataStore and read it alongside the permission check.
 
 **`outcome` stored as a raw String, not an enum:**
 - Issue: `InterventionEvent.outcome` is a `String` (`data/model/InterventionEvent.kt:12`), with `OUTCOME_DECLINED` / `OUTCOME_OPENED` as companion constants that nothing enforces. The DAO hard-codes `'DECLINED'` in SQL.
@@ -45,17 +44,6 @@ covers the smaller things that never rose to blocker level.
 ---
 
 ## Open — performance
-
-**`HomeViewModel` recomputes a 7-day usage aggregate inside a Flow collector:**
-- Problem: `loadAppsWithStats()` runs `queryAndAggregateUsageStats(now - 7 days, now)` **inside** `repo.getBlockedApps().collect { }` (`ui/home/HomeViewModel.kt:63-77`), so the entire aggregate is recomputed on every emission — including every add, removal, and pause-length change.
-- Cause: The aggregate does not depend on which apps changed, but it is inside the collector anyway.
-- Impact: On a device with many apps this is a repeated multi-hundred-millisecond query on the IO dispatcher for no new information. It is the same shape of problem the audit already fixed once in `SessionTimeHelper`.
-- Improvement path: Compute the usage map once per refresh and `combine` it with the Flow, or reuse `SessionTimeHelper`'s TTL cache.
-
-**`HomeViewModel` reaches for `UsageStatsManager` through `Context` directly:**
-- Problem: `context.getSystemService(USAGE_STATS_SERVICE)` in the ViewModel, despite `SystemServiceModule` existing to provide exactly that dependency.
-- Impact: Bypasses the injection seam, which is a large part of why `HomeViewModel` has no tests.
-- Improvement path: Inject `UsageStatsManager`.
 
 **Eager `getApplicationLabel()` / icon loading in the app picker:**
 - Problem: The picker resolves a label, and a `Drawable` icon, per installed app.
@@ -115,8 +103,9 @@ an accessibility service that cannot read window content.
 
 ~~Found while revising these documents.~~ **All cleared 2026-08-14.** Each was verified
 unreferenced before removal, and the full pass (`lintDebug testDebugUnitTest assembleDebug
-assembleRelease`) was re-run afterwards: 43 tests still pass, lint warnings dropped from
-50 to 47, and the release APK is unchanged at 1.03 MB.
+assembleRelease`) was re-run afterwards: the suite passed unchanged (43 tests at that
+point, 48 now), lint warnings dropped from 50 to 47, and the release APK is unchanged at
+1.03 MB.
 
 - `app/build.gradle.kts` — `buildConfig = true`, commented "Needed so network logging can be gated to debug builds". Removed; nothing referenced `BuildConfig`, and `BuildConfig.java` is confirmed no longer generated
 - `app/src/main/res/drawable/ic_notification.xml` — deleted; unreferenced since the foreground-service notification was removed
@@ -132,10 +121,10 @@ has done yet.
 
 ## Test coverage gaps
 
-See `TESTING.md` for the full picture. In short: 43 tests across 4 classes, all passing;
-`BreatheAccessibilityService` and `HomeViewModel` have none; there are no instrumented
-tests, and therefore no migration test against a schema that has moved 1→5 and dropped a
-table.
+See `TESTING.md` for the full picture. In short: 48 tests across 5 classes, all passing;
+`BreatheAccessibilityService` has none, which is now the largest gap; there are no
+instrumented tests, and therefore no migration test against a schema that has moved 1→5
+and dropped a table.
 
 ---
 
@@ -162,7 +151,10 @@ Kept for history. Each was verified as closed against the tree at `96eb5df`.
 | `compileSdk` / `targetSdk` 34 below Play requirement | Both raised to 36 |
 | No graceful degradation when usage access is revoked | Usage access is now optional; `HomeViewModel.isMonitoringActive` reports the permissions that actually matter |
 | No "service is running" indicator | `isMonitoringActive` surfaced on the home screen |
-| Zero tests exist | 43 tests across 4 classes |
+| Zero tests exist | 48 tests across 5 classes |
+| `HomeViewModel` re-ran a 7-day usage aggregate inside a Flow collector | Usage totals moved to their own `StateFlow`, `combine`d with the blocked-apps Flow. Covered by a regression test asserting the aggregate runs exactly once across repeated list changes |
+| `HomeViewModel` pulled `UsageStatsManager` from an injected `Context` | Injected from `SystemServiceModule`. This is what made the class testable — `HomeViewModelTest` exists because of it |
+| Onboarding gated on usage access after it became optional | Start destination now keyed on `OnboardingViewModel.isSetupComplete()` — accessibility plus overlay |
 
 ---
 

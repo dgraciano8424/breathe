@@ -29,6 +29,7 @@ class HomeViewModel @Inject constructor(
     private val repo: AppRepository,
     private val statsRepo: StatsRepository,
     private val achievementRepo: AchievementRepository,
+    private val usageStatsManager: UsageStatsManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -54,25 +55,44 @@ class HomeViewModel @Inject constructor(
     private val _isMonitoringActive = MutableStateFlow(false)
     val isMonitoringActive: StateFlow<Boolean> = _isMonitoringActive
 
+    /**
+     * Per-package foreground minutes over the last 7 days, refreshed on its own schedule
+     * rather than recomputed whenever the blocked list changes.
+     */
+    private val _usageMinutes = MutableStateFlow<Map<String, Int>>(emptyMap())
+
     init {
         refreshMonitoringState()
         refreshStats()
         loadAppsWithStats()
     }
 
+    /**
+     * Combines the blocked-apps Flow with the usage totals instead of aggregating inside
+     * the collector. The aggregate covers every app on the device and does not depend on
+     * which row changed, so re-running it on each emission meant a full 7-day scan every
+     * time the user added, removed, or re-timed a single app.
+     */
     private fun loadAppsWithStats() {
+        viewModelScope.launch {
+            combine(repo.getBlockedApps(), _usageMinutes) { apps, usage ->
+                apps.map { app -> BlockedAppWithStats(app, usage[app.packageName] ?: 0) }
+            }.collect { _blockedAppsWithStats.value = it }
+        }
+    }
+
+    /**
+     * Returns empty rather than throwing when usage access is absent — the permission is
+     * optional, so a missing grant means "no times to show", not a failure.
+     */
+    private fun refreshUsage() {
         viewModelScope.launch(Dispatchers.IO) {
-            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now = System.currentTimeMillis()
             val start = now - TimeUnit.DAYS.toMillis(7)
-            
-            repo.getBlockedApps().collect { apps ->
-                val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
-                _blockedAppsWithStats.value = apps.map { app ->
-                    val timeMs = stats[app.packageName]?.totalTimeInForeground ?: 0L
-                    BlockedAppWithStats(app, (timeMs / 60000).toInt())
-                }
-            }
+            _usageMinutes.value = runCatching {
+                usageStatsManager.queryAndAggregateUsageStats(start, now)
+                    .mapValues { (_, stat) -> (stat.totalTimeInForeground / 60000).toInt() }
+            }.getOrDefault(emptyMap())
         }
     }
 
@@ -94,6 +114,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshStats() {
+        refreshUsage()
         viewModelScope.launch {
             _todayAttempts.value = statsRepo.getTodayTotalAttempts()
             _todayDeclined.value = statsRepo.getTodayDeclined()
