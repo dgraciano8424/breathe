@@ -60,15 +60,19 @@ fun BreatheNavGraph() {
                 onPermissionsGranted = {
                     nav.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        // Home can already be on the stack, when onboarding was reached
+                        // from the monitoring-off card rather than at first launch.
+                        launchSingleTop = true
                     }
                 }
             )
         }
         composable(Routes.HOME) {
             HomeScreen(
-                onAddApp       = { nav.navigate(Routes.APP_SELECT) },
-                onViewStats    = { nav.navigate(Routes.STATS) },
-                onAchievements = { nav.navigate(Routes.ACHIEVEMENTS) }
+                onAddApp          = { nav.navigate(Routes.APP_SELECT) },
+                onViewStats       = { nav.navigate(Routes.STATS) },
+                onAchievements    = { nav.navigate(Routes.ACHIEVEMENTS) },
+                onFixPermissions  = { nav.navigate(Routes.ONBOARDING) }
             )
         }
         composable(Routes.APP_SELECT) {

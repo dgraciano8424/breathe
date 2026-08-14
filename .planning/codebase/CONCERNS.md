@@ -70,7 +70,8 @@ deliberately rather than discovering at scale.
 **`BreatheAccessibilityService` — the whole product, with no tests:**
 - Files: `service/BreatheAccessibilityService.kt`
 - Why fragile: it holds detection, the blocked-set mirror and the approval lifecycle, and nothing exercises any of it. It also inherits an OEM problem from its predecessor rather than escaping one: accessibility services are disabled by aggressive battery managers on some OEM builds, and the user can switch them off from a Settings screen the app does not control.
-- Partial mitigation: `HomeViewModel.isMonitoringActive` reports enabled-state on the home screen, so the failure is visible **if the user opens the app**.
+- Partial mitigation: since 2026-08-14 the home screen shows a "monitoring is off" card when accessibility or overlay permission is missing, refreshed on resume. The failure is visible **if the user opens the app** — which is exactly when they are not opening the apps a pause would fire on.
+- Worth knowing: `isMonitoringActive` existed from `90f7e30` but nothing collected it, and it was only computed in `init`. Four documents recorded it as a working mitigation on the strength of the commit message. Treat "the ViewModel exposes it" as unfinished until something renders it.
 - Safe modification: add unit tests around the event-handling branches first — most of it does not need a device. See `TESTING.md`.
 - Test coverage: none.
 
@@ -150,7 +151,7 @@ Kept for history. Each was verified as closed against the tree at `96eb5df`.
 | Kotlin 1.9.24 / KSP 1.9.24 outdated | Kotlin 2.2.10, KSP 2.2.10-2.0.2, AGP 9.2.1, Hilt 2.60.1 |
 | `compileSdk` / `targetSdk` 34 below Play requirement | Both raised to 36 |
 | No graceful degradation when usage access is revoked | Usage access is now optional; `HomeViewModel.isMonitoringActive` reports the permissions that actually matter |
-| No "service is running" indicator | `isMonitoringActive` surfaced on the home screen |
+| No "service is running" indicator | Genuinely closed 2026-08-14: `HomeScreen` renders a "monitoring is off" card and refreshes it on resume. `90f7e30` had exposed the state without rendering it, which several documents mistook for a fix |
 | Zero tests exist | 48 tests across 5 classes |
 | `HomeViewModel` re-ran a 7-day usage aggregate inside a Flow collector | Usage totals moved to their own `StateFlow`, `combine`d with the blocked-apps Flow. Covered by a regression test asserting the aggregate runs exactly once across repeated list changes |
 | `HomeViewModel` pulled `UsageStatsManager` from an injected `Context` | Injected from `SystemServiceModule`. This is what made the class testable — `HomeViewModelTest` exists because of it |

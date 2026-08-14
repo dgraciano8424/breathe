@@ -236,7 +236,7 @@ worth the indirection. Noted rather than recommended — the suite works as it s
 - `PauseOverlayHost` falls back to `PauseActivity` when the window is rejected, and tolerates a double-detach
 - Intervention-event write failures are caught and logged; by then the pause is gone, so there is no user to notify and nothing to retry into
 - The app picker has real `isLoading` and `errorMessage` state with a retry action — the one place errors are surfaced
-- **Missing permissions are the main "error" path**, and they are handled as state rather than exceptions: `HomeViewModel.isMonitoringActive` reflects accessibility-enabled plus `canDrawOverlays`, so a revoked permission shows as inactive rather than as silent zeros
+- **Missing permissions are the main "error" path**, and they are handled as state rather than exceptions: `HomeViewModel.isMonitoringActive` reflects accessibility-enabled plus `canDrawOverlays`, and `HomeScreen` renders a "monitoring is off" card from it, refreshed on `ON_RESUME` because permissions are revoked in Settings without the screen leaving composition
 
 ## Cross-Cutting Concerns
 

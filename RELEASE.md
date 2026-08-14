@@ -134,8 +134,10 @@ None of this has been run on real hardware. In rough order of risk:
    product, and neither the overlay nor the accessibility service has ever been
    observed working on hardware.
 2. **Is the accessibility service actually enabled and surviving?** Enable it in
-   Settings, confirm the home banner clears, then reboot and confirm the system
-   rebinds it without opening the app.
+   Settings, confirm the "monitoring is off" card on the home screen clears, then
+   reboot and confirm the system rebinds it without opening the app. Then revoke the
+   permission from Settings and return to the app **without relaunching it** — the card
+   must come back, which is what the resume observer is for.
 3. **Does an approval survive the notification shade and the keyboard?** Continue
    into a blocked app, then pull the shade down and dismiss it. Then open the
    keyboard. If the pause reappears either time, the service is treating a system

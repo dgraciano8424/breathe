@@ -23,7 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.ui.components.NimbusBuddy
@@ -36,6 +39,7 @@ fun HomeScreen(
     onAddApp: () -> Unit,
     onViewStats: () -> Unit,
     onAchievements: () -> Unit,
+    onFixPermissions: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val apps by viewModel.blockedApps.collectAsState()
@@ -44,9 +48,21 @@ fun HomeScreen(
     val todayMinutesSaved by viewModel.todayMinutesSaved.collectAsState()
     val nimbusStrength by viewModel.nimbusStrength.collectAsState()
     val progress by viewModel.progress.collectAsState()
+    val isMonitoringActive by viewModel.isMonitoringActive.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(Unit) {
-        viewModel.refreshStats()
+    // Both permissions are revoked from Settings, which does not take this screen out of
+    // composition — so a LaunchedEffect would never re-run and the screen would keep
+    // claiming monitoring was on. Same pattern as OnboardingScreen, for the same reason.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshMonitoringState()
+                viewModel.refreshStats()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
@@ -99,6 +115,17 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
+                // First, and above everything else: if monitoring is off, no other number
+                // on this screen means what it appears to mean.
+                if (!isMonitoringActive) {
+                    item {
+                        MonitoringOffCard(
+                            onFix = onFixPermissions,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+
                 item {
                     Box(
                         modifier = Modifier
@@ -218,6 +245,54 @@ fun HomeScreen(
 }
 
 /** Prominent entry point into the achievements ("Your Journey") screen. */
+/**
+ * Shown when accessibility or overlay permission is missing.
+ *
+ * Without both, no pause can appear — and because everything else on this screen is a
+ * count of past pauses, the app otherwise looks like it is working and simply has nothing
+ * to report yet. This says the quiet part out loud.
+ *
+ * Tapping returns to onboarding rather than jumping straight to Settings, so the
+ * accessibility disclosure and consent step are not bypassed.
+ */
+@Composable
+private fun MonitoringOffCard(
+    onFix: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(BreatheSand.copy(alpha = 0.14f))
+            .clickable { onFix() }
+            .padding(18.dp)
+    ) {
+        Text(
+            "MONITORING IS OFF",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = BreatheSand,
+            letterSpacing = 1.5.sp
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Breathe cannot pause anything right now",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = BreatheTextPrimary
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "A permission it needs was turned off. Some phones do this on their own to " +
+                "save battery. Tap to check the setup.",
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            color = BreatheTextSecondary
+        )
+    }
+}
+
 @Composable
 private fun JourneyCard(
     progress: UserProgress?,
