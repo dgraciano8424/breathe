@@ -1,221 +1,162 @@
 # Codebase Concerns
 
 **Analysis Date:** 2026-06-15
+**Revised:** 2026-08-14 — re-verified against the tree at `96eb5df`. Most of the
+2026-06-15 list has been fixed or deleted along with the code it described. Each item
+below was checked against source rather than carried forward; items that no longer apply
+are listed at the bottom with what closed them, so the history stays readable.
 
-## Tech Debt
+`APP_AUDIT.md` is the authoritative record of blockers and their status. This document
+covers the smaller things that never rose to blocker level.
 
-**Onboarding shown on every cold launch:**
-- Issue: `NavGraph.kt` hardcodes `startDestination = Routes.ONBOARDING` with no persistence of "has been onboarded" state. The `OnboardingViewModel` auto-advances when `hasUsagePermission` is true, so returning users with the permission granted are immediately redirected. However, if the permission is ever revoked, or on a fresh install when the auto-advance fires before the composable settles, there is no stored flag to skip onboarding. There is no `SharedPreferences` or `DataStore` usage anywhere in the codebase.
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/nav/NavGraph.kt`, `app/src/main/java/com/dgraciano/breathe/ui/onboarding/OnboardingViewModel.kt`
-- Impact: Fragile UX — relies entirely on permission state as a proxy for "completed onboarding." Any timing or permission change causes onboarding re-display.
-- Fix approach: Persist an `onboardingComplete` flag with DataStore Preferences; read it in `NavGraph` to choose start destination before composing the graph.
+---
 
-**WorkManager dependency declared but never used:**
-- Issue: `libs.versions.toml` declares `work-runtime = "2.9.0"` and `app/build.gradle.kts` includes `implementation(libs.work.runtime)`. No `Worker`, `WorkRequest`, or `WorkManager` call exists anywhere in source.
-- Files: `gradle/libs.versions.toml`, `app/build.gradle.kts`
-- Impact: Unnecessary APK bloat; unused dependency surface. Likely left from an earlier plan to schedule periodic quote refreshes.
-- Fix approach: Remove `work-runtime` from both `libs.versions.toml` and `build.gradle.kts` unless a background refresh worker is added.
+## Open — correctness
 
-**Quote refresh has no scheduling — quotes go stale:**
-- Issue: `QuoteRepository.refreshQuotes()` is only called when the local quote table is empty (`if (dao.count() == 0)`). After the first fetch, quotes are never refreshed. There is no TTL, timestamp, or periodic job.
-- Files: `app/src/main/java/com/dgraciano/breathe/data/repository/QuoteRepository.kt`
-- Impact: Users see the same batch of quotes indefinitely. The unused WorkManager dependency was presumably intended to solve this.
-- Fix approach: Add a `fetchedAt` timestamp to the quotes table and refresh when stale (e.g., older than 24 hours), or use WorkManager's `PeriodicWorkRequest`.
+**Onboarding keys its start destination on the one permission that is now optional:**
+- Issue: `BreatheNavGraph` computes `startDest = if (hasUsage) Routes.HOME else Routes.ONBOARDING` (`ui/nav/NavGraph.kt:34`). Since `90f7e30`, usage access is optional — the app is fully functional without it. A user who granted accessibility and overlay but declined usage access starts every cold launch on the onboarding screen.
+- Mitigating: `OnboardingScreen` has a `LaunchedEffect(hasAccessibility, hasOverlay)` that navigates to `HOME` once both real permissions are present, so the user is not trapped. But `startDestination` is only read at initial composition, so the result is an onboarding flash on every launch for anyone who skipped the optional permission.
+- Files: `ui/nav/NavGraph.kt:34`, `ui/onboarding/OnboardingScreen.kt:53-59`
+- Impact: Cosmetic but constant, and it signals "setup incomplete" to a user whose setup is complete.
+- Fix approach: Key the start destination on `BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)` — the same pair `HomeViewModel.isMonitoringActive` already uses. Better still, persist an `onboardingComplete` flag; there is still no DataStore or SharedPreferences anywhere in the codebase, so permission state remains a proxy for "has been onboarded".
 
-**Hardcoded magic numbers for "time saved" stat:**
-- Issue: The "Saved" metric displayed in `HomeScreen` and `StatsScreen` is computed as `declined * 20` — a fixed 20-minute assumption per resistance. This magic number is duplicated in two places.
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/home/HomeScreen.kt:148`, `app/src/main/java/com/dgraciano/breathe/ui/stats/StatsScreen.kt:84,205`
-- Impact: Changing the assumption requires editing three call sites; inconsistency risk if one is missed.
-- Fix approach: Extract to a named constant (e.g., `MINUTES_SAVED_PER_RESISTANCE = 20`) in a shared location, or expose a computed property from `StatsRepository`.
+**`outcome` stored as a raw String, not an enum:**
+- Issue: `InterventionEvent.outcome` is a `String` (`data/model/InterventionEvent.kt:12`), with `OUTCOME_DECLINED` / `OUTCOME_OPENED` as companion constants that nothing enforces. The DAO hard-codes `'DECLINED'` in SQL.
+- Files: `data/model/InterventionEvent.kt`, `data/db/InterventionEventDao.kt`
+- Impact: A typo at a call site or in the SQL literal silently produces events that are never counted — wrong statistics rather than a crash, which is the harder failure to notice.
+- Fix approach: `enum class Outcome` with a Room `@TypeConverter`.
 
-**`AppStat` is a plain data class, not a Room entity — raw query result mapping:**
-- Issue: `AppStat` (`data/model/AppStat.kt`) is returned by a `@Query` in `InterventionEventDao` that projects `packageName`, `appName`, and `COUNT(*) as count`. Room maps this via column-name matching. There is no `@DatabaseView` or explicit mapping annotation, which means schema column renames will silently break the query at runtime.
-- Files: `app/src/main/java/com/dgraciano/breathe/data/model/AppStat.kt`, `app/src/main/java/com/dgraciano/breathe/data/db/InterventionEventDao.kt:23-31`
-- Impact: Fragile — a column rename in `intervention_events` without updating `AppStat` fields causes a silent null/crash at runtime, not a compile error.
-- Fix approach: Annotate `AppStat` fields with `@ColumnInfo` matching the exact query output column names to make the contract explicit.
+**`AppStat` maps a projection by column-name matching with no explicit contract:**
+- Issue: `AppStat` is a plain data class (`packageName`, `appName`, `count`) populated from a `@Query` projection. No `@ColumnInfo`, no `@DatabaseView`.
+- Files: `data/model/AppStat.kt`, `data/db/InterventionEventDao.kt`
+- Impact: Renaming a column in `intervention_events` without updating `AppStat` breaks the query at runtime, not compile time.
+- Fix approach: Annotate the fields with `@ColumnInfo` matching the projection aliases.
 
 **Room schema export disabled:**
-- Issue: `BreatheDatabase` sets `exportSchema = false`, meaning migration correctness cannot be verified against a checked-in schema baseline.
-- Files: `app/src/main/java/com/dgraciano/breathe/data/db/BreatheDatabase.kt:14`
-- Impact: Future migrations cannot be validated by Room's migration test utilities. Schema history is lost.
-- Fix approach: Set `exportSchema = true`, add a `room.schemaLocation` to `build.gradle.kts`, and commit schema JSON files to version control.
+- Issue: `exportSchema = false` (`data/db/BreatheDatabase.kt:13`).
+- Impact: There is no checked-in schema baseline, so Room's migration test utilities cannot verify migrations. This matters more now than in June: the schema has moved 1→5, `MIGRATION_4_5` **drops a table**, and there are still no instrumented tests. The migration is verified by nothing at all.
+- Fix approach: Set `exportSchema = true`, add `room.schemaLocation`, commit the schema JSON, and write the migration test. See `TESTING.md`.
 
-**`outcome` field stored as raw String, not enum:**
-- Issue: `InterventionEvent.outcome` is a plain `String` column. The DAO query for declined count hard-codes the string `'DECLINED'` directly in SQL. The constants `OUTCOME_DECLINED` and `OUTCOME_OPENED` exist in the companion object but are not enforced at the type level.
-- Files: `app/src/main/java/com/dgraciano/breathe/data/model/InterventionEvent.kt`, `app/src/main/java/com/dgraciano/breathe/data/db/InterventionEventDao.kt:19`
-- Impact: Typos in the SQL literal or in call sites produce silent data loss (events never counted as declined). No compile-time enforcement.
-- Fix approach: Use a Kotlin `enum class Outcome` with a Room `@TypeConverter`, replacing the raw string column and SQL literal.
+**`StatsScreen` loads twice on every open:**
+- Issue: `StatsViewModel.init` calls `loadStats()` (`ui/stats/StatsViewModel.kt:35`) and `StatsScreen` calls it again from `LaunchedEffect(Unit)` (`ui/stats/StatsScreen.kt:40-41`).
+- Impact: Two concurrent reads per navigation and a brief `isLoading` flicker. Minor, and the double-read is deliberate insurance against stale data on re-entry — but the flicker is a side effect nobody chose.
+- Fix approach: Drop the `init` call and keep the `LaunchedEffect`, or make `loadStats()` not reset `isLoading` when data is already present.
 
 ---
 
-## Known Bugs
+## Open — performance
 
-**`approvedSessions` logic allows re-triggering on the same session:**
-- Symptoms: If `ForegroundAppDetector` briefly returns a different package (e.g., launcher flicker between app switches) and then returns to the original blocked package, `approvedSessions.remove(lastForeground)` clears the approval and the pause screen fires again within the same intentional open session.
-- Files: `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:38-44`
-- Trigger: Rapidly switching between two apps; or any app that briefly yields focus to the launcher during loading.
-- Workaround: None. Users see a second pause screen unexpectedly.
+**`HomeViewModel` recomputes a 7-day usage aggregate inside a Flow collector:**
+- Problem: `loadAppsWithStats()` runs `queryAndAggregateUsageStats(now - 7 days, now)` **inside** `repo.getBlockedApps().collect { }` (`ui/home/HomeViewModel.kt:63-77`), so the entire aggregate is recomputed on every emission — including every add, removal, and pause-length change.
+- Cause: The aggregate does not depend on which apps changed, but it is inside the collector anyway.
+- Impact: On a device with many apps this is a repeated multi-hundred-millisecond query on the IO dispatcher for no new information. It is the same shape of problem the audit already fixed once in `SessionTimeHelper`.
+- Improvement path: Compute the usage map once per refresh and `combine` it with the Flow, or reuse `SessionTimeHelper`'s TTL cache.
 
-**`ForegroundAppDetector` queries only 10-second window — unreliable on slow devices:**
-- Symptoms: `queryUsageStats` uses `now - 10_000L` as the window. On devices where `UsageStatsManager` updates lazily (some OEM variants update every 30–60 seconds), the returned stats may be stale, causing the detector to return `null` or the wrong package.
-- Files: `app/src/main/java/com/dgraciano/breathe/service/ForegroundAppDetector.kt:12`
-- Trigger: Low-end or OEM-modified devices. Also occurs immediately after reboot before the usage stats daemon warms up.
-- Workaround: None currently.
+**`HomeViewModel` reaches for `UsageStatsManager` through `Context` directly:**
+- Problem: `context.getSystemService(USAGE_STATS_SERVICE)` in the ViewModel, despite `SystemServiceModule` existing to provide exactly that dependency.
+- Impact: Bypasses the injection seam, which is a large part of why `HomeViewModel` has no tests.
+- Improvement path: Inject `UsageStatsManager`.
 
-**`PauseViewModel.init()` can be called multiple times (no guard):**
-- Symptoms: `PauseActivity` calls `viewModel.init(blockedPackage, appName)` in `onCreate`. On activity recreation (e.g., config change), `init()` fires again, incrementing the in-memory `_attemptCount` by re-querying `getTodayAttemptCount` which now reflects the previously recorded event from the same session.
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseViewModel.kt:33-40`, `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseActivity.kt:39`
-- Trigger: Rotate device or system-initiated activity recreation while pause screen is showing.
-- Workaround: None; attempt count display jumps.
-
-**`StatsScreen` calls `loadStats()` twice on composition:**
-- Symptoms: `StatsViewModel.init` calls `loadStats()`, then `StatsScreen` has a `LaunchedEffect(Unit)` that also calls `viewModel.loadStats()`. This results in two concurrent database reads on every screen open, causing a brief flicker as `isLoading` resets to `true` then `false` in rapid succession (the second `loadStats()` call reinitializes state with `isLoading = true`).
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/stats/StatsViewModel.kt:30-31`, `app/src/main/java/com/dgraciano/breathe/ui/stats/StatsScreen.kt:31`
-- Trigger: Every navigation to the Stats screen.
-- Workaround: None; minor visual artifact.
-
-**`AppSelectScreen` dismisses immediately on first tap, blocking multi-select:**
-- Symptoms: `AppSelectScreen` calls `onDone()` (pops back stack) immediately after `viewModel.blockApp(app)`, allowing only one app to be selected per visit.
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/appselect/AppSelectScreen.kt:35-36`
-- Trigger: User wants to block multiple apps in one session.
-- Workaround: User must navigate back repeatedly and select one app at a time.
+**Eager `getApplicationLabel()` / icon loading in the app picker:**
+- Problem: The picker resolves a label, and a `Drawable` icon, per installed app.
+- Impact: First open is slow on devices with many apps. This is mitigated now — the screen has real `isLoading` and `errorMessage` state with retry — but the underlying cost is unchanged.
+- Improvement path: Load icons lazily per visible row.
 
 ---
 
-## Security Considerations
+## Open — scaling
 
-**HTTP logging interceptor active in release builds:**
-- Risk: `NetworkModule` attaches `HttpLoggingInterceptor` with `Level.BASIC` unconditionally. In release APKs this logs HTTP request/response lines to Logcat, potentially exposing quote API URLs and response data to apps with `READ_LOGS` permission.
-- Files: `app/src/main/java/com/dgraciano/breathe/di/NetworkModule.kt:21-23`
-- Current mitigation: None.
-- Recommendations: Guard with `if (BuildConfig.DEBUG)` or set `Level.NONE` in release builds.
+**`InterventionEventDao` fixed limits:** `getRecent()` is `LIMIT 100` and the top-apps
+query is `LIMIT 5`. Both are fine for the current screens and would need revisiting if a
+history UI or a longer breakdown is added.
 
-**`allowBackup="true"` — database backed up to Google cloud:**
-- Risk: `AndroidManifest.xml` sets `android:allowBackup="true"`. The Room database `breathe.db` — containing the full list of apps the user is trying to resist, all intervention events, and behavioral patterns — is included in Android Auto Backup and device-to-device transfer by default.
-- Files: `app/src/main/AndroidManifest.xml:18`
-- Current mitigation: None.
-- Recommendations: Add a `backup_rules.xml` (API 31+) or `full_backup_content.xml` to explicitly exclude `breathe.db` from backups, or set `allowBackup="false"` if backup is not a feature requirement.
-
-**`BootReceiver` exported with no permission restriction:**
-- Risk: `BootReceiver` is declared `android:exported="true"` with only an implicit intent filter. While `BOOT_COMPLETED` is a protected broadcast that only the system can send, the `exported=true` declaration is broader than needed and increases the attack surface if the intent filter is ever changed.
-- Files: `app/src/main/AndroidManifest.xml:48-53`
-- Current mitigation: Protected broadcast effectively limits real-world risk.
-- Recommendations: Add `android:permission="android.permission.RECEIVE_BOOT_COMPLETED"` attribute, or set `exported="false"` if targeting API 33+ where system broadcasts can still be received by non-exported receivers.
+**No data retention policy:** `intervention_events` grows without bound — one row per
+pause, forever. Not urgent at realistic usage rates, but there is now no WorkManager (it
+was removed as unused), so a cleanup job would need a new mechanism. Worth deciding
+deliberately rather than discovering at scale.
 
 ---
 
-## Performance Bottlenecks
+## Fragile areas
 
-**Polling loop at 500ms with database call each cycle:**
-- Problem: `AppMonitorService.startMonitoring()` calls `appRepository.isBlocked(current)` inside a `while(isActive)` loop that polls every 500ms. Each poll executes a `SELECT EXISTS` SQL query.
-- Files: `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt:34-50`
-- Cause: No in-memory cache of the blocked apps set; every poll hits Room on the IO dispatcher.
-- Improvement path: Load `getAllBlockedPackageNames()` into an in-memory `Set<String>` on service start and refresh via a `Flow` collector on `AppRepository.getBlockedApps()`. The polling loop then only reads memory.
+**`BreatheAccessibilityService` — the whole product, with no tests:**
+- Files: `service/BreatheAccessibilityService.kt`
+- Why fragile: it holds detection, the blocked-set mirror and the approval lifecycle, and nothing exercises any of it. It also inherits an OEM problem from its predecessor rather than escaping one: accessibility services are disabled by aggressive battery managers on some OEM builds, and the user can switch them off from a Settings screen the app does not control.
+- Partial mitigation: `HomeViewModel.isMonitoringActive` reports enabled-state on the home screen, so the failure is visible **if the user opens the app**.
+- Safe modification: add unit tests around the event-handling branches first — most of it does not need a device. See `TESTING.md`.
+- Test coverage: none.
 
-**`AppSelectViewModel` calls `getAllPackageNames()` once and does not react to changes:**
-- Problem: When `AppSelectScreen` is opened, all installed apps are loaded minus already-blocked ones. If another blocked app is added concurrently (unlikely but possible), the list is stale until the screen is recreated.
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/appselect/AppSelectViewModel.kt:34`
-- Cause: One-shot `suspend` call instead of collecting from `BlockedAppDao.getAll()` flow.
-- Improvement path: Combine the installed apps list with the `Flow<List<BlockedApp>>` using `combine` to reactively filter.
+**Loss of the ambient "still running" signal:**
+- Why fragile: the foreground-service notification is gone, which is a genuine win for the user and a genuine loss for diagnosability. It was the only ambient indication that monitoring was alive. A silently disabled service now looks exactly like a working one right up until a blocked app opens without a pause.
+- Safe modification: decide deliberately whether silent failure is acceptable. If it is not, the options are a periodic check with a notification, or making the home screen's status more prominent.
 
-**`loadInstalledApps()` runs on `Dispatchers.IO` but calls `getApplicationLabel()` per app:**
-- Problem: `pm.getApplicationLabel(it)` is called in a `.map` inside a coroutine on `Dispatchers.IO`. For devices with 200+ user apps, this blocks the IO thread pool for potentially 200–500ms on first open.
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/appselect/AppSelectViewModel.kt:35-39`
-- Cause: No loading state shown in `AppSelectScreen` while the list is populating; screen appears empty momentarily.
-- Improvement path: Add a loading indicator to `AppSelectScreen`, or use `getInstalledApplications(0)` without `GET_META_DATA` which is faster.
-
----
-
-## Fragile Areas
-
-**`ForegroundAppDetector` — platform API reliability:**
-- Files: `app/src/main/java/com/dgraciano/breathe/service/ForegroundAppDetector.kt`
-- Why fragile: `UsageStatsManager.queryUsageStats` behavior varies significantly by Android OEM. On some devices (MIUI, ColorOS, HyperOS), usage stats require additional manufacturer-specific permissions or are throttled. The 10-second query window is too narrow for lazy-update implementations.
-- Safe modification: Expand the window to 30–60 seconds and take the most recent entry. Wrap in a try/catch for `SecurityException`. Provide a permissions guidance screen for known problematic OEMs.
-- Test coverage: None. Core feature has zero tests.
-
-**`AppMonitorService` — OS may kill it:**
-- Files: `app/src/main/java/com/dgraciano/breathe/service/AppMonitorService.kt`
-- Why fragile: Even as a foreground service, aggressive battery optimization on MIUI, Huawei EMUI, and similar OEM Android variants kills foreground services. `BootReceiver` restarts it on reboot but not after mid-session kills.
-- Safe modification: Implement `onStartCommand` returning `START_STICKY` to request restart after kill. Consider adding an `AlarmManager` or `JobScheduler` watchdog.
-- Test coverage: None.
-
-**`PauseViewModel.init()` — not idempotent:**
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/pause/PauseViewModel.kt`
-- Why fragile: Called directly from `PauseActivity.onCreate`, so any activity lifecycle event (rotation, multi-window resize) re-runs initialization logic. The ViewModel survives recreation but `init()` is not guarded.
-- Safe modification: Gate with a `private var initialized = false` flag, or move initialization into the ViewModel's own `init {}` block using saved state handle for the package name.
-- Test coverage: None.
-
-**Navigation start destination is always ONBOARDING:**
-- Files: `app/src/main/java/com/dgraciano/breathe/ui/nav/NavGraph.kt`
-- Why fragile: Relies on `OnboardingViewModel.refreshPermissionState()` being called and the `LaunchedEffect(hasUsage)` auto-navigating fast enough to be invisible to the user. On slow devices the onboarding screen flashes on every launch for returning users who have the permission.
-- Safe modification: Determine start destination before composing the NavHost (e.g., read a DataStore flag synchronously in `MainActivity` or using `runBlocking` at startup), then pass it as the initial route.
-- Test coverage: None.
+**`PauseViewModel.init()` is a reset, not an initializer:**
+- Files: `ui/pause/PauseViewModel.kt:52-61`
+- Why fragile: it has no idempotency guard, by design — `onNewIntent` can retarget the same ViewModel at a different app, so `init()` deliberately resets `pauseSeconds` to the default before re-reading. That is correct for retargeting, but it means any *unintended* second call silently re-reads `getTodayAttemptCount() + 1`, which will have moved if an event was recorded in between.
+- Note: much less exposed than in June. The overlay path builds a fresh ViewModel per pause, so this only applies to the `PauseActivity` fallback.
+- Safe modification: leave as-is, but if a guard is added it must not break the retarget case — the reset is load-bearing.
 
 ---
 
-## Scaling Limits
+## Security considerations
 
-**`InterventionEventDao.getRecent()` hardcoded at 100 rows:**
-- Current capacity: Returns `LIMIT 100` events.
-- Limit: If a user interacts with 100+ blocked apps in a session, older events are invisible to any future feature that uses `getRecent()`.
-- Scaling path: Paginate with `PagingSource` when a history/log UI feature is added.
+Materially better than at the last review. The three items previously listed here are all
+closed (see below), and the app's exposure is now unusually small: no network permission,
+no exported components except the widget receiver the launcher requires, no backup, and
+an accessibility service that cannot read window content.
 
-**`getTopApps` limited to 5 entries:**
-- Current capacity: `LIMIT 5` in SQL.
-- Limit: If a user blocks more than 5 apps, the stats screen only shows the top 5 even if the user has meaningful data for the rest.
-- Scaling path: Make the limit a parameter or increase to 10; add a scrollable list if count grows.
-
-**No data retention policy — `intervention_events` grows indefinitely:**
-- Current capacity: Unbounded. Every intervention is inserted and never deleted.
-- Limit: On devices with limited storage, after months of use the table could accumulate tens of thousands of rows.
-- Scaling path: Add a periodic cleanup job (WorkManager) that deletes events older than 90 days, or implement the already-declared WorkManager dependency.
+**What remains worth watching:**
+- The accessibility service is the highest-privilege thing in the app. Its narrow scope (`typeWindowStateChanged`, `canRetrieveWindowContent="false"`) is what makes the privacy claims in `PRIVACY.md` and `STORE_LISTING.md` true. **Widening either setting silently falsifies two public documents**, so treat `app/src/main/res/xml/accessibility_service_config.xml` as a file that cannot be changed without a matching documentation change.
+- `PauseCountWidget` is `exported="true"`, which is required for the launcher to place it. It exposes no data beyond the counts already shown on the home screen.
 
 ---
 
-## Dependencies at Risk
+## Dead code and stale comments
 
-**`kotlin = "1.9.24"` and `ksp = "1.9.24-1.0.20"` — outdated:**
-- Risk: Kotlin 1.9.x is a maintenance release; Kotlin 2.x is current. The `ksp` version is tightly coupled to the Kotlin version and must be updated together. The Compose BOM `2024.06.00` is over a year old relative to the analysis date.
-- Impact: Missing compiler improvements, newer Compose features (strong skipping mode on by default in Kotlin 2.x), and potential incompatibility if any dependency requires a newer Kotlin version.
-- Migration plan: Update to Kotlin 2.x, matching KSP version, and a current Compose BOM (2025.x). Test Hilt annotation processing with the new KSP version.
+Small, safe to clear, found while revising these documents. None have been changed —
+they are recorded here rather than fixed silently:
 
-**`compileSdk = 34` / `targetSdk = 34` — below current requirement:**
-- Risk: Google Play requires `targetSdk >= 35` for new app submissions as of August 2024, and `>= 36` for updates in 2025. The app currently targets SDK 34.
-- Impact: Play Store submission rejection for new or updated releases.
-- Migration plan: Update `compileSdk` and `targetSdk` to 36 in `app/build.gradle.kts`, test for behavioral changes (predictive back gesture, photo picker, notification permission changes).
-
-**Gson converter for Retrofit — consider Moshi or kotlinx.serialization:**
-- Risk: Gson lacks null-safety awareness for Kotlin and does not enforce non-null types at deserialization. A malformed ZenQuotes API response with missing `q` or `a` fields will create a `QuoteDto` with null fields that are declared non-null in Kotlin, causing a `NullPointerException` at use.
-- Impact: App crash if ZenQuotes API returns unexpected JSON shape.
-- Migration plan: Replace `converter-gson` with `kotlinx-serialization-json` or `converter-moshi` with Kotlin codegen for null-safe deserialization.
+- `app/build.gradle.kts:74` — `buildConfig = true`, commented "Needed so network logging can be gated to debug builds". No source file references `BuildConfig` any more; the network logging it existed for was deleted.
+- `app/src/main/res/drawable/ic_notification.xml` — unreferenced anywhere in `app/src/` since the foreground-service notification was removed. Resource shrinking drops it from release builds, so this is tidiness, not size.
+- `ui/pause/PauseOverlayHost.kt:105` — the KDoc on `isShowing` describes it as "read by the monitor loop from its polling thread". There is no monitor loop and no polling thread; it is read from the accessibility event callback.
+- `res/values/strings.xml` — `notification_title` and `notification_channel_name` remain, with no notification to name.
 
 ---
 
-## Missing Critical Features
+## Test coverage gaps
 
-**No error state for quote loading failure:**
-- Problem: `QuoteRepository.refreshQuotes()` silently swallows API errors via `runCatching { }.getOrNull()`. If the network call fails and the local table is empty, `getRandomQuote()` returns `null`. `PauseScreen` handles `null` quote gracefully in the UI, but the user sees no quote with no explanation.
-- Blocks: Reliable quote display on first offline use.
-
-**No graceful degradation when Usage Stats permission is revoked post-onboarding:**
-- Problem: After the user grants permission and moves to `HomeScreen`, if they revoke the Usage Stats permission from Settings, `AppMonitorService` continues running but `queryUsageStats` returns an empty list silently. The service appears functional (notification persists) but no apps are detected.
-- Blocks: User awareness that monitoring has stopped.
-
-**No "service is running" status indicator on HomeScreen:**
-- Problem: `HomeScreen` calls `viewModel.startService()` in `LaunchedEffect(Unit)` every time it enters composition. There is no feedback to the user about whether the service is active, whether the Usage Stats permission is still granted, or whether monitoring is working.
-- Blocks: User trust and troubleshooting.
+See `TESTING.md` for the full picture. In short: 43 tests across 4 classes, all passing;
+`BreatheAccessibilityService` and `HomeViewModel` have none; there are no instrumented
+tests, and therefore no migration test against a schema that has moved 1→5 and dropped a
+table.
 
 ---
 
-## Test Coverage Gaps
+## Closed since 2026-06-15
 
-**Zero tests exist:**
-- What's not tested: Every class in the codebase — ViewModels, repositories, DAOs, `ForegroundAppDetector`, `AppMonitorService`, all UI screens.
-- Files: `app/src/test/` directory exists but contains no test files. `app/src/androidTest/` directory exists but contains no test files. Test dependencies (`junit`, `coroutines-test`, `mockk`) are declared in `build.gradle.kts` but unused.
-- Risk: Any refactor or bug fix has no regression safety net. The core detection logic (`ForegroundAppDetector`, `AppMonitorService`) and intervention recording (`PauseViewModel`, `StatsRepository`) are completely unvalidated.
-- Priority: High — particularly `ForegroundAppDetector`, `AppMonitorService` polling logic, `PauseViewModel` (init idempotency), and `StatsRepository` date boundary calculations (`startOfToday`, `startOfWeek`).
+Kept for history. Each was verified as closed against the tree at `96eb5df`.
+
+| Concern | Closed by |
+|---|---|
+| WorkManager declared but never used | Dependency removed |
+| Quote refresh has no scheduling / no error state | Quote feature deleted entirely (`90f7e30`) — it was never rendered |
+| Gson null-safety risk on `QuoteDto` | Gson and the DTO deleted with the network stack |
+| HTTP logging interceptor active in release builds | `NetworkModule` deleted; no HTTP client remains |
+| `allowBackup="true"` exposed the database to cloud backup | `allowBackup="false"` plus explicit `backup_rules.xml` and `data_extraction_rules.xml` |
+| `BootReceiver` exported with no permission restriction | `BootReceiver` deleted — the system rebinds the accessibility service itself |
+| 500ms poll loop with a Room query per cycle | Poll loop deleted; the service mirrors the blocked set in memory |
+| `ForegroundAppDetector` 10-second query window unreliable on OEM devices | `ForegroundAppDetector` deleted; detection is push-based |
+| `AppMonitorService` killed by OEM battery managers | Service deleted. **Note the risk did not vanish** — it moved to the accessibility service being disabled instead. See Fragile Areas |
+| `approvedSessions` re-triggering on launcher flicker | Rewritten as `SessionApprovalStore`. **The underlying question is open again in a new form** — see blocker 2 in `APP_AUDIT.md` |
+| Hardcoded `declined * 20` "time saved" | Replaced with persisted per-event `minutesSaved` (`c148554`) |
+| `AppSelectScreen` dismissed on first tap, blocking multi-select | Picker now supports multi-select with an "Add N" action |
+| `AppSelectViewModel` list did not react to changes | Loading, empty and error states are real state with retry |
+| Kotlin 1.9.24 / KSP 1.9.24 outdated | Kotlin 2.2.10, KSP 2.2.10-2.0.2, AGP 9.2.1, Hilt 2.60.1 |
+| `compileSdk` / `targetSdk` 34 below Play requirement | Both raised to 36 |
+| No graceful degradation when usage access is revoked | Usage access is now optional; `HomeViewModel.isMonitoringActive` reports the permissions that actually matter |
+| No "service is running" indicator | `isMonitoringActive` surfaced on the home screen |
+| Zero tests exist | 43 tests across 4 classes |
 
 ---
 
-*Concerns audit: 2026-06-15*
+*Concerns audit: 2026-06-15. Revised 2026-08-14 against `96eb5df`.*
