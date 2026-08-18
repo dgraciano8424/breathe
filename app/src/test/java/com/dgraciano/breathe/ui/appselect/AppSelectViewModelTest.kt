@@ -7,9 +7,14 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -17,6 +22,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppSelectViewModelTest {
@@ -42,12 +50,21 @@ class AppSelectViewModelTest {
     private fun app(name: String, packageName: String = "com.example.${name.lowercase()}") =
         LaunchableApp(packageName = packageName, appName = name)
 
-    private fun viewModel() = AppSelectViewModel(
+    private fun viewModel(dispatcher: CoroutineDispatcher = testDispatcher) = AppSelectViewModel(
         repo = repo,
         launcherApps = launcherApps,
         usage = usage,
-        appLoadDispatcher = testDispatcher,
+        appLoadDispatcher = dispatcher,
     )
+
+    /** Models a package-manager call that returns after cancellation has already been requested. */
+    private suspend fun <T> awaitIgnoringCancellation(value: CompletableDeferred<T>): T =
+        suspendCoroutine { continuation ->
+            value.invokeOnCompletion { failure ->
+                if (failure == null) continuation.resume(value.getCompleted())
+                else continuation.resumeWithException(failure)
+            }
+        }
 
     /** Removing the security fallback would make denied access hide every launchable app. */
     @Test
@@ -92,5 +109,63 @@ class AppSelectViewModelTest {
             ),
             viewModel.apps.first { it.size == 4 }.map { it.packageName },
         )
+    }
+
+    /** Removing the current-load guard lets a late, cancelled lookup replace newer picker rows. */
+    @Test
+    fun `newer load owns app rows when older lookup finishes later`() = runTest {
+        val older = CompletableDeferred<List<LaunchableApp>>()
+        val newer = CompletableDeferred<List<LaunchableApp>>()
+        var calls = 0
+        coEvery { launcherApps.load() } coAnswers {
+            if (calls++ == 0) awaitIgnoringCancellation(older) else newer.await()
+        }
+        coEvery { usage.usageByPackage(any(), any()) } returns emptyMap()
+        val viewModel = viewModel(StandardTestDispatcher(testScheduler))
+        runCurrent()
+
+        viewModel.loadInstalledApps()
+        runCurrent()
+        newer.complete(listOf(app("Beta")))
+        runCurrent()
+        older.complete(listOf(app("Alpha")))
+        runCurrent()
+
+        assertEquals("Beta", viewModel.apps.first { it.size == 1 }.single().appName)
+        assertEquals(false, viewModel.isLoading.value)
+    }
+
+    /** Removing the stale-finally guard lets an obsolete request hide a newer request's spinner. */
+    @Test
+    fun `older load finishing cannot clear loading while newer load is pending`() = runTest {
+        val older = CompletableDeferred<List<LaunchableApp>>()
+        val newer = CompletableDeferred<List<LaunchableApp>>()
+        var calls = 0
+        coEvery { launcherApps.load() } coAnswers {
+            if (calls++ == 0) awaitIgnoringCancellation(older) else newer.await()
+        }
+        coEvery { usage.usageByPackage(any(), any()) } returns emptyMap()
+        val viewModel = viewModel(StandardTestDispatcher(testScheduler))
+        runCurrent()
+
+        viewModel.loadInstalledApps()
+        runCurrent()
+        older.complete(listOf(app("Alpha")))
+        runCurrent()
+
+        assertEquals(true, viewModel.isLoading.value)
+
+        newer.complete(listOf(app("Beta")))
+        runCurrent()
+    }
+
+    /** Catching cancellation as an ordinary failure would incorrectly show the retry message. */
+    @Test
+    fun `cancellation does not publish a picker error`() = runTest {
+        coEvery { launcherApps.load() } throws CancellationException("picker was replaced")
+
+        val viewModel = viewModel()
+
+        assertNull(viewModel.errorMessage.value)
     }
 }

@@ -12,7 +12,9 @@ import com.dgraciano.breathe.di.IoDispatcher
 import com.dgraciano.breathe.service.UsageAccessReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -88,19 +90,34 @@ class AppSelectViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
+    /** The picker has one active request; an obsolete result must never update its state. */
+    private var appLoadJob: Job? = null
+    private var appLoadGeneration = 0L
+
     init { loadInstalledApps() }
 
     fun loadInstalledApps() {
-        viewModelScope.launch(appLoadDispatcher) {
+        val generation = ++appLoadGeneration
+        appLoadJob?.cancel()
+        appLoadJob = viewModelScope.launch(appLoadDispatcher) {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                _allApps.value = queryInstalledApps()
+                val apps = queryInstalledApps()
+                if (generation == appLoadGeneration) {
+                    _allApps.value = apps
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
-                Log.e(TAG, "Could not list installed apps", e)
-                _errorMessage.value = "Couldn't load your apps. Pull to try again."
+                if (generation == appLoadGeneration) {
+                    Log.e(TAG, "Could not list installed apps", e)
+                    _errorMessage.value = "Couldn't load your apps. Pull to try again."
+                }
             } finally {
-                _isLoading.value = false
+                if (generation == appLoadGeneration) {
+                    _isLoading.value = false
+                }
             }
         }
     }

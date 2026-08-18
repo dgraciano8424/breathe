@@ -68,3 +68,39 @@ but both verification commands completed `BUILD SUCCESSFUL`.
 
 Only Task 7 launcher/usage behavior, the directly affected Home and aggregate-consumer fixtures,
 and this report were changed. No Task 13 picker visual/content redesign was included.
+
+## Fix round 1: stale picker loads
+
+### Corrections
+
+- `AppSelectViewModel` now owns one picker-load `Job`. Starting a new reload cancels the prior
+  request and advances a generation token.
+- Every async state write (rows, ordinary error, and loading completion) is generation-gated, so a
+  non-cooperative obsolete request cannot overwrite a later result or hide its loading state.
+- `CancellationException` is rethrown before ordinary error handling, preventing cancellation from
+  showing the picker retry message.
+
+### Fix TDD evidence
+
+Before changing production code, three delayed-fake ViewModel tests failed against the initial Task
+7 implementation: an old request completing after B replaced B's rows, its `finally` cleared B's
+loading state while B was pending, and cancellation published the ordinary picker error. The fakes
+model package-manager work that may finish after cancellation, which is why cancellation alone is
+not sufficient without the generation guard.
+
+After the owned-job and guarded-write implementation, the picker suite passed. The tests would fail
+again if any success, error, or `finally` guard were removed, or if cancellation were caught as an
+ordinary exception.
+
+### Fix verification
+
+Both commands completed `BUILD SUCCESSFUL` with the Java/Android paths documented above:
+
+```sh
+./gradlew :app:testDebugUnitTest \
+  --tests 'com.dgraciano.breathe.ui.appselect.AppSelectViewModelTest' \
+  --tests 'com.dgraciano.breathe.ui.home.HomeViewModelTest' \
+  --tests 'com.dgraciano.breathe.service.SessionTimeHelperTest'
+
+./gradlew :app:testDebugUnitTest :app:compileDebugKotlin
+```
