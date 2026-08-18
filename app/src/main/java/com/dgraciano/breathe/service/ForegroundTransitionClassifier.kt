@@ -20,7 +20,9 @@ class ForegroundTransitionClassifier {
 
         if (!state.monitoredPackagesReady) {
             return ForegroundTransition(
-                state = state.copy(deferredEligibleObservation = observation),
+                state = state.copy(
+                    firstDeferredEligibleObservation = state.firstDeferredEligibleObservation ?: observation,
+                ),
                 actions = emptyList(),
             )
         }
@@ -29,7 +31,7 @@ class ForegroundTransitionClassifier {
     }
 
     /**
-     * Marks the initial monitored-package snapshot ready and processes the latest eligible event
+     * Marks the initial monitored-package snapshot ready and processes the first eligible event
      * exactly once. Repeated readiness notifications only refresh the package set.
      */
     fun reconcileAfterMonitoredPackagesReady(
@@ -42,9 +44,9 @@ class ForegroundTransitionClassifier {
 
         val ready = state.copy(
             monitoredPackages = packages,
-            deferredEligibleObservation = null,
+            firstDeferredEligibleObservation = null,
         )
-        val deferred = state.deferredEligibleObservation
+        val deferred = state.firstDeferredEligibleObservation
             ?: return ForegroundTransition(ready, emptyList())
 
         return reduceEligible(ready, deferred)

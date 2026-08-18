@@ -19,6 +19,17 @@ class ForegroundTransitionClassifierTest {
     }
 
     @Test
+    fun `first eligible observation is reconciled when packages become ready`() {
+        val first = classifier.reduce(emptyState(), observation("com.social")).state
+        val waiting = classifier.reduce(first, observation("com.news", at = 2L)).state
+
+        val ready = classifier.reconcileAfterMonitoredPackagesReady(waiting, setOf("com.social"))
+
+        assertEquals(listOf(ForegroundAction.RequestPause("com.social")), ready.actions)
+        assertEquals("com.social", ready.state.currentEligiblePackage)
+    }
+
+    @Test
     fun `same app window churn requests one pause for the visit`() {
         val ready = readyState("com.social")
         val first = classifier.reduce(ready, observation("com.social"))

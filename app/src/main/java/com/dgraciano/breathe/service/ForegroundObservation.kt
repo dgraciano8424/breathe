@@ -37,8 +37,8 @@ data class ForegroundObservation(
 data class ForegroundClassifierState(
     /** Null until the initial monitored-package snapshot has arrived. */
     val monitoredPackages: Set<String>? = null,
-    /** The most recent eligible observation received while [monitoredPackages] was unavailable. */
-    val deferredEligibleObservation: ForegroundObservation? = null,
+    /** The first eligible observation received while [monitoredPackages] was unavailable. */
+    val firstDeferredEligibleObservation: ForegroundObservation? = null,
     /** The app for the current meaningful foreground visit. */
     val currentEligiblePackage: String? = null,
     /** Visit approvals that have not yet been ended by a meaningful app transition. */
