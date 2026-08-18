@@ -1,20 +1,21 @@
 package com.dgraciano.breathe.service
 
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SessionApprovalStore @Inject constructor() {
-    private val approved = ConcurrentHashMap.newKeySet<String>()
+    private val approvedPackage = AtomicReference<String?>(null)
 
     fun approve(packageName: String) {
-        approved.add(packageName)
+        approvedPackage.set(packageName)
     }
 
     fun revoke(packageName: String?) {
-        packageName?.let { approved.remove(it) }
+        if (packageName == null) return
+        approvedPackage.compareAndSet(packageName, null)
     }
 
-    fun isApproved(packageName: String): Boolean = packageName in approved
+    fun isApproved(packageName: String): Boolean = approvedPackage.get() == packageName
 }
