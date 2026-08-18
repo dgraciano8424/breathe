@@ -6,9 +6,9 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
@@ -33,24 +33,28 @@ import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
+import com.dgraciano.breathe.service.InterventionCoordinator
+import com.dgraciano.breathe.service.PausePresentation
+import com.dgraciano.breathe.service.PausePresentationCallbacks
+import com.dgraciano.breathe.service.PauseRequest
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
 import com.dgraciano.breathe.ui.theme.BreatheTheme
 import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
 
 private const val TAG = "PauseOverlay"
 
-/** Mirrors what PauseActivity renders, so both entry points show the same screen. */
 @Composable
 private fun PauseOverlayContent(
     appName: String,
     viewModel: PauseViewModel,
     onYes: () -> Unit,
-    onNo: () -> Unit
+    onNo: () -> Unit,
 ) {
     val attemptCount by viewModel.attemptCount.collectAsState()
     val selectedReason by viewModel.selectedReason.collectAsState()
@@ -67,23 +71,11 @@ private fun PauseOverlayContent(
         pauseSeconds = pauseSeconds,
         onReasonSelected = viewModel::selectReason,
         onYes = onYes,
-        onNo = onNo
+        onNo = onNo,
     )
 }
 
-/**
- * Shows the mindful-pause screen as a `TYPE_APPLICATION_OVERLAY` window rather than an
- * Activity.
- *
- * Starting an Activity from a background service is unreliable on Android 10+: a
- * foreground service is not a general exemption from background-activity-start
- * restrictions, so the pause screen could simply never appear. Drawing over the blocked
- * app instead sidesteps that entirely, and costs no new permission — the app already
- * requires SYSTEM_ALERT_WINDOW and the monitor already gated on it.
- *
- * A pleasant side effect: the blocked app never leaves the foreground, so choosing
- * "yes" just dismisses the overlay instead of relaunching anything.
- */
+/** Android overlay implementation of the coordinator-owned pause presentation protocol. */
 @Singleton
 class PauseOverlayHost @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -93,41 +85,41 @@ class PauseOverlayHost @Inject constructor(
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
     private val widgetRefresher: WidgetRefresher,
-    @ApplicationScope private val appScope: CoroutineScope
-) {
+    @ApplicationScope private val appScope: CoroutineScope,
+    // Provider breaks the coordinator -> presentation -> coordinator construction cycle while
+    // still resolving the exact application-scoped coordinator for decision and Back callbacks.
+    private val coordinatorProvider: Provider<InterventionCoordinator>,
+) : PausePresentation {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager by lazy { context.getSystemService(WindowManager::class.java) }
 
     private var root: FrameLayout? = null
     private var owners: OverlayOwners? = null
+    private var active: ActivePresentation? = null
 
-    /**
-     * Read from the accessibility service's event callback. The overlay draws over the
-     * blocked app without displacing it, so that app keeps raising window events while
-     * the pause is up; without this the service would immediately decide to intervene
-     * again.
-     */
     @Volatile
     var isShowing: Boolean = false
         private set
 
-    fun canShow(): Boolean = Settings.canDrawOverlays(context)
-
-    /** Safe to call from any thread; window work is posted to the main looper. */
-    fun show(packageName: String, appName: String) {
-        isShowing = true
-        mainHandler.post { showInternal(packageName, appName) }
+    override fun show(request: PauseRequest, callbacks: PausePresentationCallbacks) {
+        mainHandler.post { showInternal(request, callbacks) }
     }
 
-    fun hide() {
-        isShowing = false
-        mainHandler.post { hideInternal() }
+    override fun dismiss(requestId: String) {
+        mainHandler.post { hideInternal(requestId) }
     }
 
     @SuppressLint("InflateParams")
-    private fun showInternal(packageName: String, appName: String) {
-        if (root != null) return
+    private fun showInternal(request: PauseRequest, callbacks: PausePresentationCallbacks) {
+        if (active != null || root != null) {
+            callbacks.onPresentationLost(
+                request.id,
+                IllegalStateException("A pause presentation is already active"),
+            )
+            return
+        }
 
+        val appName = resolveAppName(request.packageName)
         val overlayOwners = OverlayOwners().apply { create() }
         val viewModel = ViewModelProvider(
             overlayOwners.viewModelStore,
@@ -140,12 +132,13 @@ class PauseOverlayHost @Inject constructor(
                         sessionTimeHelper = sessionTimeHelper,
                         sessionApprovalStore = sessionApprovalStore,
                         widgetRefresher = widgetRefresher,
-                        appScope = appScope
+                        appScope = appScope,
+                        coordinator = coordinatorProvider.get(),
                     )
                 }
-            }
+            },
         )[PauseViewModel::class.java]
-        viewModel.init(packageName, appName)
+        viewModel.init(request.id, request.packageName, appName)
 
         val composeView = ComposeView(context).apply {
             setViewTreeLifecycleOwner(overlayOwners)
@@ -156,28 +149,20 @@ class PauseOverlayHost @Inject constructor(
                     PauseOverlayContent(
                         appName = appName,
                         viewModel = viewModel,
-                        onYes = {
-                            viewModel.recordOpened()
-                            // The blocked app is still in the foreground behind us.
-                            hide()
-                        },
+                        onYes = viewModel::recordOpened,
                         onNo = {
                             viewModel.recordDeclined()
-                            hide()
                             goHome()
-                        }
+                        },
                     )
                 }
             }
         }
 
-        // A plain ComposeView cannot intercept the back key, so it is wrapped in a
-        // container that can. Back dismisses without recording, matching what the
-        // Activity did; the monitor re-intervenes after its debounce.
         val container = object : FrameLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    hide()
+                    coordinatorProvider.get().dismissWithBack(request.id)
                     return true
                 }
                 return super.dispatchKeyEvent(event)
@@ -187,62 +172,96 @@ class PauseOverlayHost @Inject constructor(
             isFocusableInTouchMode = true
             requestFocus()
         }
+        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) = Unit
+
+            override fun onViewDetachedFromWindow(view: View) {
+                if (root === container && active?.requestId == request.id) {
+                    clearOverlayState()
+                    callbacks.onPresentationLost(request.id, null)
+                }
+            }
+        })
 
         try {
             windowManager.addView(container, layoutParams())
-        } catch (e: WindowManager.BadTokenException) {
-            // Overlay permission can be revoked between the check and the add.
-            Log.w(TAG, "Overlay rejected; falling back to the pause activity", e)
+        } catch (cause: RuntimeException) {
+            Log.w(TAG, "Overlay rejected; falling back to the pause activity", cause)
             overlayOwners.destroy()
-            isShowing = false
-            launchPauseActivity(packageName)
+            active = ActivePresentation(request.id)
+            callbacks.onOverlayFailed(request.id, cause)
+            launchPauseActivity(request, callbacks)
             return
         }
 
         root = container
         owners = overlayOwners
+        active = ActivePresentation(request.id)
+        isShowing = true
+        callbacks.onOverlayAdded(request.id)
     }
 
-    private fun hideInternal() {
-        val container = root ?: return
-        runCatching { windowManager.removeView(container) }
-            .onFailure { Log.w(TAG, "Overlay already detached", it) }
-        owners?.destroy()
-        root = null
-        owners = null
+    private fun hideInternal(requestId: String) {
+        val current = active ?: return
+        if (current.requestId != requestId) return
+        val container = root
+        clearOverlayState()
+        if (container != null) {
+            runCatching { windowManager.removeView(container) }
+                .onFailure { Log.w(TAG, "Overlay already detached", it) }
+        } else {
+            PauseActivity.finishRequest(requestId)
+        }
     }
+
+    private fun clearOverlayState() {
+        owners?.destroy()
+        owners = null
+        root = null
+        active = null
+        isShowing = false
+    }
+
+    private fun launchPauseActivity(
+        request: PauseRequest,
+        callbacks: PausePresentationCallbacks,
+    ) {
+        try {
+            context.startActivity(
+                PauseActivity.newIntent(context, request.packageName, request.id)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION),
+            )
+        } catch (cause: RuntimeException) {
+            callbacks.onPresentationLost(request.id, cause)
+        }
+    }
+
+    private fun resolveAppName(packageName: String): String = runCatching {
+        val info = context.packageManager.getApplicationInfo(packageName, 0)
+        context.packageManager.getApplicationLabel(info).toString()
+    }.getOrDefault(packageName)
 
     private fun layoutParams() = WindowManager.LayoutParams(
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        // Focusable on purpose: the window has to receive the back key. Touches
-        // outside it are still blocked, which is the point of the intervention.
         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-        PixelFormat.TRANSLUCENT
+        PixelFormat.TRANSLUCENT,
     )
 
     private fun goHome() {
         context.startActivity(
             Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_HOME)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
 
-    /** Last resort when the overlay window is refused. */
-    private fun launchPauseActivity(packageName: String) {
-        context.startActivity(
-            PauseActivity.newIntent(context, packageName)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        )
-    }
+    private data class ActivePresentation(
+        val requestId: String,
+    )
 
-    /**
-     * A ComposeView expects to inherit these from an Activity. An overlay window has no
-     * Activity behind it, so the host supplies them and tears them down with the window.
-     */
     private class OverlayOwners : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
         private val lifecycleRegistry = LifecycleRegistry(this)
         private val savedStateController = SavedStateRegistryController.create(this)
@@ -253,7 +272,6 @@ class PauseOverlayHost @Inject constructor(
             get() = savedStateController.savedStateRegistry
 
         fun create() {
-            // Must restore before the registry is moved past CREATED.
             savedStateController.performRestore(null)
             lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         }

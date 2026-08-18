@@ -10,6 +10,7 @@ import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
+import com.dgraciano.breathe.service.InterventionCoordinator
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
 import com.dgraciano.breathe.widget.WidgetRefresher
@@ -21,15 +22,60 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class PauseViewModel @Inject constructor(
+class PauseViewModel private constructor(
     private val statsRepo: StatsRepository,
     private val appRepo: AppRepository,
     private val tipsRepo: MentalHealthTipsRepository,
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
     private val widgetRefresher: WidgetRefresher,
-    @ApplicationScope private val appScope: CoroutineScope
+    @ApplicationScope private val appScope: CoroutineScope,
+    private val coordinator: InterventionCoordinator?,
+    @Suppress("UNUSED_PARAMETER") constructorMarker: Unit,
 ) : ViewModel() {
+
+    @Inject
+    constructor(
+        statsRepo: StatsRepository,
+        appRepo: AppRepository,
+        tipsRepo: MentalHealthTipsRepository,
+        sessionTimeHelper: SessionTimeHelper,
+        sessionApprovalStore: SessionApprovalStore,
+        widgetRefresher: WidgetRefresher,
+        @ApplicationScope appScope: CoroutineScope,
+        coordinator: InterventionCoordinator,
+    ) : this(
+        statsRepo,
+        appRepo,
+        tipsRepo,
+        sessionTimeHelper,
+        sessionApprovalStore,
+        widgetRefresher,
+        appScope,
+        coordinator,
+        Unit,
+    )
+
+    /** Compatibility constructor for the existing JVM tests of the legacy persistence seam. */
+    constructor(
+        statsRepo: StatsRepository,
+        appRepo: AppRepository,
+        tipsRepo: MentalHealthTipsRepository,
+        sessionTimeHelper: SessionTimeHelper,
+        sessionApprovalStore: SessionApprovalStore,
+        widgetRefresher: WidgetRefresher,
+        @ApplicationScope appScope: CoroutineScope,
+    ) : this(
+        statsRepo,
+        appRepo,
+        tipsRepo,
+        sessionTimeHelper,
+        sessionApprovalStore,
+        widgetRefresher,
+        appScope,
+        null,
+        Unit,
+    )
 
     private val _attemptCount = MutableStateFlow(0)
     val attemptCount: StateFlow<Int> = _attemptCount
@@ -48,8 +94,14 @@ class PauseViewModel @Inject constructor(
 
     var currentPackage: String = ""
     var currentAppName: String = ""
+    private var currentRequestId: String = ""
 
     fun init(packageName: String, appName: String) {
+        init(requestId = "", packageName = packageName, appName = appName)
+    }
+
+    fun init(requestId: String, packageName: String, appName: String) {
+        currentRequestId = requestId
         currentPackage = packageName
         currentAppName = appName
         // Reset so a retargeted pause never inherits the previous app's duration.
@@ -74,6 +126,10 @@ class PauseViewModel @Inject constructor(
         val packageName = currentPackage
         val appName = currentAppName
         val reason = _selectedReason.value
+        coordinator?.let {
+            it.recordDeclined(currentRequestId, appName, reason)
+            return
+        }
         appScope.launch {
             // Off the main thread: this scans a week of usage events.
             val saved = sessionTimeHelper.getAvgSessionMinutes(packageName)
@@ -91,6 +147,10 @@ class PauseViewModel @Inject constructor(
     }
 
     fun recordOpened() {
+        coordinator?.let {
+            it.recordOpened(currentRequestId, currentAppName, _selectedReason.value)
+            return
+        }
         // Approve synchronously so the session is granted even if the activity
         // finishes before the coroutine below completes.
         sessionApprovalStore.approve(currentPackage)

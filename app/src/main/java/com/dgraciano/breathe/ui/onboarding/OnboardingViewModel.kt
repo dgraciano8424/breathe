@@ -6,7 +6,7 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
-import com.dgraciano.breathe.service.BreatheAccessibilityService
+import com.dgraciano.breathe.service.AccessibilityServiceState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +44,7 @@ class OnboardingViewModel @Inject constructor(
     fun refreshPermissionState() {
         _hasUsagePermission.value = checkUsagePermission()
         _hasOverlayPermission.value = checkOverlayPermission()
-        _hasAccessibility.value = BreatheAccessibilityService.isEnabled(context)
+        _hasAccessibility.value = AccessibilityServiceState.isEnabled(context)
     }
 
     private fun checkUsagePermission(): Boolean {
