@@ -38,6 +38,7 @@ class InterventionCoordinator @Inject constructor(
     private var lastEventAtElapsedMs: Long? = null
     private var pending: PendingPresentation? = null
     private var deferredPause: DeferredPause? = null
+    private val activeFailures = mutableMapOf<DegradedReason, MonitoringRecoveryAction>()
 
     private val mutableHealth = MutableStateFlow<MonitoringHealth>(MonitoringHealth.Initializing)
     val health: StateFlow<MonitoringHealth> = mutableHealth.asStateFlow()
@@ -59,7 +60,7 @@ class InterventionCoordinator @Inject constructor(
 
         if (permissionWasRevoked && presentationWasActive) {
             closePending(keepForRetry = false)
-            mutableHealth.value = MonitoringHealth.Degraded(
+            activateFailure(
                 reason = DegradedReason.PermissionChanged,
                 recoveryAction = MonitoringRecoveryAction.ReviewSetup,
             )
@@ -80,7 +81,7 @@ class InterventionCoordinator @Inject constructor(
     fun onServiceDisconnected() {
         serviceConnected = false
         closePending(keepForRetry = false)
-        degradeUnlessAlready(
+        activateFailure(
             reason = DegradedReason.ServiceDisconnected,
             recoveryAction = MonitoringRecoveryAction.ReviewAccessibilitySettings,
         )
@@ -88,7 +89,8 @@ class InterventionCoordinator @Inject constructor(
 
     @Synchronized
     fun onMonitoredPackagesReady(packages: Set<String>) {
-        val priorReason = (mutableHealth.value as? MonitoringHealth.Degraded)?.reason
+        val hadMonitoredPackageFailure =
+            DegradedReason.MonitoredAppsUnavailable in activeFailures
         val deferredObservedAt =
             classifierState.firstDeferredEligibleObservation?.observedAtElapsedMs
         runClassifier {
@@ -104,11 +106,8 @@ class InterventionCoordinator @Inject constructor(
                 }
             },
         )
-        if (recoveryCompleted && priorReason != DegradedReason.MonitoredAppsUnavailable) {
-            initializationRetryUsed = false
-            recoveryInProgress = false
-        } else if (classifierState.monitoredPackagesReady &&
-            priorReason == DegradedReason.MonitoredAppsUnavailable
+        if (classifierState.monitoredPackagesReady &&
+            (recoveryCompleted || hadMonitoredPackageFailure)
         ) {
             initializationRetryUsed = false
             recoveryInProgress = false
@@ -121,7 +120,7 @@ class InterventionCoordinator @Inject constructor(
         recordDiagnostic(DegradedReason.MonitoredAppsUnavailable, cause)
         classifierState = ForegroundClassifierState()
         closePending(keepForRetry = false)
-        degradeUnlessAlready(
+        activateFailure(
             reason = DegradedReason.MonitoredAppsUnavailable,
             recoveryAction = initializationRecoveryAction(),
         )
@@ -142,7 +141,7 @@ class InterventionCoordinator @Inject constructor(
         recordDiagnostic(DegradedReason.ClassifierFailure, cause)
         closePending(keepForRetry = false)
         deferredPause = null
-        degradeUnlessAlready(
+        activateFailure(
             reason = DegradedReason.ClassifierFailure,
             recoveryAction = initializationRecoveryAction(),
         )
@@ -156,11 +155,12 @@ class InterventionCoordinator @Inject constructor(
 
         initializationRetryUsed = true
         recoveryInProgress = true
+        activeFailures.remove(degraded.reason)
         classifierState = ForegroundClassifierState()
         approvals.clear()
         deferredPause = null
         lastEventAtElapsedMs = null
-        mutableHealth.value = MonitoringHealth.Initializing
+        publishReadiness()
         recoverySequence += 1
         mutableRecoveryRequest.value =
             MonitoringRecoveryRequest.ReinitializeMonitoring(recoverySequence)
@@ -203,7 +203,7 @@ class InterventionCoordinator @Inject constructor(
     @Synchronized
     fun dismissWithBack(requestId: String) {
         val current = pending ?: return
-        if (current.request.id != requestId) return
+        if (current.request.id != requestId || current.terminalClaimed) return
         approveCurrentVisit(current.request.packageName)
         closePending(keepForRetry = false)
         publishReadiness()
@@ -257,7 +257,7 @@ class InterventionCoordinator @Inject constructor(
         val current = pending ?: return
         if (current.request.id != requestId || !current.terminalClaimed) return
         mutableDiagnostic.value = MonitoringDiagnostic(DegradedReason.ClassifierFailure, cause)
-        mutableHealth.value = MonitoringHealth.Degraded(
+        activateFailure(
             reason = DegradedReason.ClassifierFailure,
             recoveryAction = MonitoringRecoveryAction.ReviewSetup,
         )
@@ -329,7 +329,7 @@ class InterventionCoordinator @Inject constructor(
 
     private fun degradePresentation(current: PendingPresentation, reason: DegradedReason) {
         closePending(keepForRetry = false)
-        mutableHealth.value = MonitoringHealth.Degraded(
+        activateFailure(
             reason = reason,
             recoveryAction = when (reason) {
                 DegradedReason.OverlayUnavailable ->
@@ -367,9 +367,17 @@ class InterventionCoordinator @Inject constructor(
     }
 
     private fun publishReadiness(clearing: Set<DegradedReason> = emptySet()) {
-        val degraded = mutableHealth.value as? MonitoringHealth.Degraded
-        if (degraded != null && degraded.reason !in clearing) return
-        val next = when {
+        clearing.forEach(activeFailures::remove)
+        publishHealth()
+    }
+
+    private fun publishHealth() {
+        val activeFailure = FAILURE_PRIORITY.firstNotNullOfOrNull { reason ->
+            activeFailures[reason]?.let { recoveryAction ->
+                MonitoringHealth.Degraded(reason, recoveryAction)
+            }
+        }
+        val next = activeFailure ?: when {
             accessibilityGranted == false ->
                 MonitoringHealth.SetupRequired(SetupRequiredReason.Accessibility)
             overlayGranted == false -> MonitoringHealth.SetupRequired(SetupRequiredReason.Overlay)
@@ -395,12 +403,12 @@ class InterventionCoordinator @Inject constructor(
             serviceConnected &&
             classifierState.monitoredPackagesReady
 
-    private fun degradeUnlessAlready(
+    private fun activateFailure(
         reason: DegradedReason,
         recoveryAction: MonitoringRecoveryAction,
     ) {
-        if (mutableHealth.value is MonitoringHealth.Degraded) return
-        mutableHealth.value = MonitoringHealth.Degraded(reason, recoveryAction)
+        activeFailures[reason] = recoveryAction
+        publishHealth()
     }
 
     private inline fun runClassifier(block: () -> ForegroundTransition): ForegroundTransition? =
@@ -409,7 +417,7 @@ class InterventionCoordinator @Inject constructor(
         } catch (cause: Exception) {
             recordDiagnostic(DegradedReason.ClassifierFailure, cause)
             closePending(keepForRetry = false)
-            mutableHealth.value = MonitoringHealth.Degraded(
+            activateFailure(
                 reason = DegradedReason.ClassifierFailure,
                 recoveryAction = initializationRecoveryAction(),
             )
@@ -442,5 +450,13 @@ class InterventionCoordinator @Inject constructor(
 
     private companion object {
         const val PRESENTATION_TIMEOUT_MS = 2_500L
+        val FAILURE_PRIORITY = listOf(
+            DegradedReason.ClassifierFailure,
+            DegradedReason.PermissionChanged,
+            DegradedReason.OverlayUnavailable,
+            DegradedReason.PresentationNotConfirmed,
+            DegradedReason.MonitoredAppsUnavailable,
+            DegradedReason.ServiceDisconnected,
+        )
     }
 }

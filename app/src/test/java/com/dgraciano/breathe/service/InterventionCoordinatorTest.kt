@@ -245,6 +245,46 @@ class InterventionCoordinatorTest {
     }
 
     @Test
+    fun `package failure survives recovery of an overlapping service disconnect`() = runTest {
+        val fixture = fixture(backgroundScope)
+        fixture.coordinator.connectReadyState()
+
+        fixture.coordinator.onServiceDisconnected()
+        fixture.coordinator.onMonitoredPackagesUnavailable(
+            IllegalStateException("blocked apps unavailable"),
+        )
+        fixture.coordinator.onServiceConnected()
+
+        assertEquals(
+            DegradedReason.MonitoredAppsUnavailable,
+            (fixture.coordinator.health.value as MonitoringHealth.Degraded).reason,
+        )
+
+        fixture.coordinator.onMonitoredPackagesReady(setOf(SELECTED_PACKAGE))
+        assertEquals(MonitoringHealth.Active(null), fixture.coordinator.health.value)
+    }
+
+    @Test
+    fun `service disconnect survives recovery of an overlapping package failure`() = runTest {
+        val fixture = fixture(backgroundScope)
+        fixture.coordinator.connectReadyState()
+
+        fixture.coordinator.onMonitoredPackagesUnavailable(
+            IllegalStateException("blocked apps unavailable"),
+        )
+        fixture.coordinator.onServiceDisconnected()
+        fixture.coordinator.onMonitoredPackagesReady(setOf(SELECTED_PACKAGE))
+
+        assertEquals(
+            DegradedReason.ServiceDisconnected,
+            (fixture.coordinator.health.value as MonitoringHealth.Degraded).reason,
+        )
+
+        fixture.coordinator.onServiceConnected()
+        assertEquals(MonitoringHealth.Active(null), fixture.coordinator.health.value)
+    }
+
+    @Test
     fun `monitored package initialization retries once then routes to setup review`() = runTest {
         val fixture = fixture(backgroundScope)
         fixture.coordinator.connectReadyState()
@@ -474,6 +514,56 @@ class InterventionCoordinatorTest {
 
         assertEquals(listOf(requestId), fixture.presentation.dismissedRequestIds)
         assertTrue(fixture.approvals.isApproved(SELECTED_PACKAGE))
+    }
+
+    @Test
+    fun `Back cannot overtake a claimed terminal decision that later succeeds`() = runTest {
+        val fixture = fixture(backgroundScope)
+        fixture.coordinator.connectReadyState()
+        fixture.coordinator.onForegroundObservation(selectedObservation())
+        val requestId = fixture.presentation.lastRequest.id
+        fixture.decisions.completionGate = CompletableDeferred()
+
+        fixture.coordinator.recordOpened(requestId, appName = "Social", reason = null)
+        runCurrent()
+        fixture.coordinator.dismissWithBack(requestId)
+
+        assertTrue(fixture.presentation.dismissedRequestIds.isEmpty())
+        assertFalse(fixture.approvals.isApproved(SELECTED_PACKAGE))
+        assertEquals(MonitoringHealth.Active(1L), fixture.coordinator.health.value)
+
+        fixture.decisions.completionGate?.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(requestId), fixture.presentation.dismissedRequestIds)
+        assertTrue(fixture.approvals.isApproved(SELECTED_PACKAGE))
+        assertEquals(1, fixture.decisions.recorded.size)
+    }
+
+    @Test
+    fun `Back cannot overtake a claimed terminal decision that later fails`() = runTest {
+        val fixture = fixture(backgroundScope)
+        fixture.coordinator.connectReadyState()
+        fixture.coordinator.onForegroundObservation(selectedObservation())
+        val requestId = fixture.presentation.lastRequest.id
+        fixture.decisions.completionGate = CompletableDeferred()
+        val failure = IllegalStateException("disk unavailable")
+        fixture.decisions.result = Result.failure(failure)
+
+        fixture.coordinator.recordOpened(requestId, appName = "Social", reason = null)
+        runCurrent()
+        fixture.coordinator.dismissWithBack(requestId)
+        fixture.decisions.completionGate?.complete(Unit)
+        runCurrent()
+
+        assertTrue(fixture.presentation.dismissedRequestIds.isEmpty())
+        assertFalse(fixture.approvals.isApproved(SELECTED_PACKAGE))
+        assertEquals(
+            DegradedReason.ClassifierFailure,
+            (fixture.coordinator.health.value as MonitoringHealth.Degraded).reason,
+        )
+        assertEquals(failure, fixture.coordinator.diagnostic.value?.cause)
+        assertEquals(1, fixture.decisions.recorded.size)
     }
 
     @Test

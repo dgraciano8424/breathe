@@ -165,3 +165,40 @@ ANDROID_HOME=/usr/local/share/android-commandlinetools \
 
 Result: `BUILD SUCCESSFUL`, exit 0. Parsed JUnit XML totals: 99 tests, 0 failures, 0 errors,
 0 skipped. `git diff --check` passed.
+
+## Fix round 2
+
+Resolved the two remaining re-review blockers with separate RED→GREEN cycles.
+
+### Active overlapping failures
+
+The coordinator now retains every active degraded reason with its recovery action and derives the
+single public `MonitoringHealth.Degraded` deterministically from a fixed priority. Recovery events
+remove only their corresponding cause. This prevents a later independent failure from being lost:
+
+- service disconnect → monitored-package failure → service reconnect remains
+  `MonitoredAppsUnavailable` until packages recover;
+- monitored-package failure → service disconnect → package recovery remains
+  `ServiceDisconnected` until the service reconnects.
+
+The two regression tests failed against the previous first-failure-only implementation: one
+incorrectly became `Active` after service reconnection and the reverse ordering became
+`Initializing` after package recovery. Both passed after the active-failure model replaced
+`degradeUnlessAlready`.
+
+### Back versus claimed terminal persistence
+
+`dismissWithBack` now ignores a request whose terminal outcome has already been atomically
+claimed. A suspended sink test proves Back cannot approve or dismiss before a successful write;
+after the sink succeeds, normal opened completion approves and dismisses exactly once. A matching
+failure test proves Back cannot overtake a write that later fails: the presentation remains,
+approval remains false, and the persistence diagnostic/degraded health is published.
+
+Both tests failed against the previous behavior because Back approved and dismissed while the sink
+was suspended. Both passed after terminal-claim precedence was enforced.
+
+### Fix round 2 verification
+
+The coordinator suite passes all 33 tests. The required focused Task 2/3/4 suite and full JVM suite
+both completed `BUILD SUCCESSFUL` with the configured Java 17 and Android SDK paths. Parsed full
+JUnit XML totals: 103 tests, 0 failures, 0 errors, 0 skipped. `git diff --check` passed.
