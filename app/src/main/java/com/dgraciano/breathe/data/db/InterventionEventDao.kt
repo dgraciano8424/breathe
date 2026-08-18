@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.Flow
 interface InterventionEventDao {
 
     @Insert
-    suspend fun insert(event: InterventionEvent)
+    suspend fun insert(event: InterventionEvent): Long
+
+    @Query("UPDATE intervention_events SET minutesSaved = :minutesSaved WHERE id = :id")
+    suspend fun updateMinutesSaved(id: Long, minutesSaved: Int)
 
     @Query("SELECT COUNT(*) FROM intervention_events WHERE packageName = :pkg AND timestamp > :since")
     suspend fun getAttemptCount(pkg: String, since: Long): Int

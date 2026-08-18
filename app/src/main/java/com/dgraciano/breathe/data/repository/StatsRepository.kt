@@ -55,5 +55,7 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
 
     fun getRecentEvents(): Flow<List<InterventionEvent>> = dao.getRecent()
 
-    suspend fun recordEvent(event: InterventionEvent) = dao.insert(event)
+    suspend fun recordEvent(event: InterventionEvent) {
+        dao.insert(event)
+    }
 }

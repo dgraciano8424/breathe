@@ -110,7 +110,7 @@ class StatsRepositoryTest {
             appName = "Example",
             outcome = InterventionEvent.OUTCOME_DECLINED
         )
-        coEvery { dao.insert(event) } returns Unit
+        coEvery { dao.insert(event) } returns 1L
 
         repo.recordEvent(event)
 

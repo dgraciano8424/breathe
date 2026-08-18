@@ -1,6 +1,7 @@
 package com.dgraciano.breathe.service
 
 import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager.INTERVAL_BEST
 import android.app.usage.UsageStatsManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -28,7 +29,7 @@ private const val MAX_SESSIONS = 50
 @Singleton
 class SessionTimeHelper @Inject constructor(
     private val usageStatsManager: UsageStatsManager
-) {
+) : UsageAccessReader {
     private class Entry(val minutes: Int, val computedAt: Long)
 
     /** Concurrent because declines are recorded on a shared application scope. */
@@ -44,6 +45,21 @@ class SessionTimeHelper @Inject constructor(
         val result = computeAvgSessionMinutes(packageName, now)
         cache[packageName] = Entry(result, now)
         return result
+    }
+
+    override suspend fun usageByPackage(startMs: Long, endMs: Long): Map<String, Long> = try {
+        usageStatsManager.queryUsageStats(INTERVAL_BEST, startMs, endMs)
+            .orEmpty()
+            .groupBy { it.packageName }
+            .mapValues { (_, stats) -> stats.sumOf { it.totalTimeInForeground } }
+    } catch (_: SecurityException) {
+        emptyMap()
+    }
+
+    override suspend fun averageSessionMinutes(packageName: String): Int = try {
+        getAvgSessionMinutes(packageName)
+    } catch (_: SecurityException) {
+        0
     }
 
     private fun computeAvgSessionMinutes(packageName: String, now: Long): Int {
