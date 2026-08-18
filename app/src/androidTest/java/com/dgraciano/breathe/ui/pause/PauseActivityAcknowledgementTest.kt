@@ -22,6 +22,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.UninstallModules
 import javax.inject.Inject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -44,6 +45,7 @@ class PauseActivityAcknowledgementTest {
     }
 
     @Inject lateinit var coordinator: InterventionCoordinator
+    @Inject lateinit var activityRequests: PauseActivityRequestRegistry
 
     private val recordingPresentation: RecordingPresentation
         get() = presentation as RecordingPresentation
@@ -62,6 +64,7 @@ class PauseActivityAcknowledgementTest {
                 surface = ForegroundSurface.ELIGIBLE_APP,
             ),
         )
+        activityRequests.open(recordingPresentation.request.id)
     }
 
     @Test
@@ -74,14 +77,20 @@ class PauseActivityAcknowledgementTest {
         ).use { scenario ->
             scenario.onActivity { activity ->
                 assertEquals(request.id, activity.intent.getStringExtra(PauseActivity.EXTRA_REQUEST_ID))
-                assertEquals(1, activity.acknowledgementCount)
             }
+            assertTrue(activityRequests.isAcknowledged(request.id))
+            assertTrue(coordinatorRequestIsConfirmed())
 
-            scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED)
-            scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            scenario.recreate()
             scenario.onActivity { activity ->
-                assertEquals(1, activity.acknowledgementCount)
+                activity.startActivity(
+                    PauseActivity.newIntent(context, "com.example.retarget", request.id),
+                )
             }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertTrue(activityRequests.isAcknowledged(request.id))
+            assertFalse(activityRequests.claimAcknowledgement(request.id))
+            assertTrue(coordinatorRequestIsConfirmed())
 
             scenario.onActivity { activity ->
                 activity.onBackPressedDispatcher.onBackPressed()
@@ -101,7 +110,7 @@ class PauseActivityAcknowledgementTest {
             PauseActivity.newIntent(context, request.packageName, request.id),
         )
 
-        scenario.onActivity { activity -> assertEquals(1, activity.acknowledgementCount) }
+        scenario.onActivity { assertTrue(activityRequests.isAcknowledged(request.id)) }
         scenario.close()
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 
@@ -109,6 +118,17 @@ class PauseActivityAcknowledgementTest {
         assertTrue(health is MonitoringHealth.Degraded)
         assertEquals(DegradedReason.OverlayUnavailable, (health as MonitoringHealth.Degraded).reason)
         assertEquals(listOf(request.id), recordingPresentation.dismissedRequestIds)
+    }
+
+    private fun coordinatorRequestIsConfirmed(): Boolean {
+        val pendingField = InterventionCoordinator::class.java.getDeclaredField("pending").apply {
+            isAccessible = true
+        }
+        val pending = pendingField.get(coordinator) ?: return false
+        val confirmedField = pending.javaClass.getDeclaredField("confirmed").apply {
+            isAccessible = true
+        }
+        return confirmedField.getBoolean(pending)
     }
 
     private class RecordingPresentation : PausePresentation {

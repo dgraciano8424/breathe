@@ -89,6 +89,7 @@ class PauseOverlayHost @Inject constructor(
     // Provider breaks the coordinator -> presentation -> coordinator construction cycle while
     // still resolving the exact application-scoped coordinator for decision and Back callbacks.
     private val coordinatorProvider: Provider<InterventionCoordinator>,
+    private val activityRequests: PauseActivityRequestRegistry,
 ) : PausePresentation {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager by lazy { context.getSystemService(WindowManager::class.java) }
@@ -210,7 +211,7 @@ class PauseOverlayHost @Inject constructor(
             runCatching { windowManager.removeView(container) }
                 .onFailure { Log.w(TAG, "Overlay already detached", it) }
         } else {
-            PauseActivity.finishRequest(requestId)
+            activityRequests.close(requestId)
         }
     }
 
@@ -226,6 +227,7 @@ class PauseOverlayHost @Inject constructor(
         request: PauseRequest,
         callbacks: PausePresentationCallbacks,
     ) {
+        activityRequests.open(request.id)
         try {
             context.startActivity(
                 PauseActivity.newIntent(context, request.packageName, request.id)
@@ -233,6 +235,7 @@ class PauseOverlayHost @Inject constructor(
                     .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION),
             )
         } catch (cause: RuntimeException) {
+            activityRequests.close(request.id)
             callbacks.onPresentationLost(request.id, cause)
         }
     }
