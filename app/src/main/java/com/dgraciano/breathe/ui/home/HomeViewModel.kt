@@ -1,6 +1,5 @@
 package com.dgraciano.breathe.ui.home
 
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
@@ -12,6 +11,7 @@ import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.IoDispatcher
 import com.dgraciano.breathe.service.BreatheAccessibilityService
+import com.dgraciano.breathe.service.UsageAccessReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -30,7 +30,7 @@ class HomeViewModel @Inject constructor(
     private val repo: AppRepository,
     private val statsRepo: StatsRepository,
     private val achievementRepo: AchievementRepository,
-    private val usageStatsManager: UsageStatsManager,
+    private val usage: UsageAccessReader,
     @param:ApplicationContext private val context: Context,
     @param:IoDispatcher private val usageDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -92,10 +92,12 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(usageDispatcher) {
             val now = System.currentTimeMillis()
             val start = now - TimeUnit.DAYS.toMillis(7)
-            _usageMinutes.value = runCatching {
-                usageStatsManager.queryAndAggregateUsageStats(start, now)
-                    .mapValues { (_, stat) -> (stat.totalTimeInForeground / 60000).toInt() }
-            }.getOrDefault(emptyMap())
+            _usageMinutes.value = try {
+                usage.usageByPackage(start, now)
+                    .mapValues { (_, totalMs) -> (totalMs / 60_000).toInt() }
+            } catch (_: SecurityException) {
+                emptyMap()
+            }
         }
     }
 

@@ -1,7 +1,5 @@
 package com.dgraciano.breathe.ui.home
 
-import android.app.usage.UsageStats
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import com.dgraciano.breathe.data.db.TodayAggregate
 import com.dgraciano.breathe.data.model.BlockedApp
@@ -10,9 +8,10 @@ import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.service.UsageAccessReader
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,14 +36,11 @@ class HomeViewModelTest {
     private lateinit var repo: AppRepository
     private lateinit var statsRepo: StatsRepository
     private lateinit var achievementRepo: AchievementRepository
-    private lateinit var usageStatsManager: UsageStatsManager
+    private lateinit var usage: UsageAccessReader
     private lateinit var context: Context
     private lateinit var blockedApps: MutableStateFlow<List<BlockedApp>>
 
     private fun app(pkg: String) = BlockedApp(packageName = pkg, appName = pkg)
-
-    private fun usage(totalMs: Long): UsageStats =
-        mockk { every { totalTimeInForeground } returns totalMs }
 
     @Before
     fun setUp() {
@@ -65,9 +61,9 @@ class HomeViewModelTest {
                 badges = emptyList()
             ))
         }
-        usageStatsManager = mockk {
-            every { queryAndAggregateUsageStats(any(), any()) } returns
-                mapOf("com.a" to usage(120 * 60_000L))
+        usage = mockk {
+            coEvery { usageByPackage(any(), any()) } returns
+                mapOf("com.a" to 120 * 60_000L)
         }
         context = mockk(relaxed = true)
     }
@@ -80,7 +76,7 @@ class HomeViewModelTest {
             repo,
             statsRepo,
             achievementRepo,
-            usageStatsManager,
+            usage,
             context,
             usageDispatcher = testDispatcher,
         )
@@ -109,12 +105,12 @@ class HomeViewModelTest {
     @Test
     fun `changing the blocked list does not re-run the usage aggregate`() = runTest {
         val vm = viewModel()
-        verify(exactly = 1) { usageStatsManager.queryAndAggregateUsageStats(any(), any()) }
+        io.mockk.coVerify(exactly = 1) { usage.usageByPackage(any(), any()) }
 
         blockedApps.value = listOf(app("com.a"), app("com.b"))
         blockedApps.value = listOf(app("com.a"))
 
-        verify(exactly = 1) { usageStatsManager.queryAndAggregateUsageStats(any(), any()) }
+        io.mockk.coVerify(exactly = 1) { usage.usageByPackage(any(), any()) }
         assertEquals(1, vm.blockedApps.value.size)
     }
 
@@ -124,14 +120,13 @@ class HomeViewModelTest {
 
         vm.refreshStats()
 
-        verify(exactly = 2) { usageStatsManager.queryAndAggregateUsageStats(any(), any()) }
+        io.mockk.coVerify(exactly = 2) { usage.usageByPackage(any(), any()) }
     }
 
     /** Usage access is optional, so a refusal must degrade to zeros, not crash the screen. */
     @Test
     fun `missing usage access yields zero minutes instead of propagating`() = runTest {
-        every { usageStatsManager.queryAndAggregateUsageStats(any(), any()) } throws
-            SecurityException("usage access not granted")
+        coEvery { usage.usageByPackage(any(), any()) } throws SecurityException("usage access not granted")
 
         val rows = viewModel().blockedApps.value
 

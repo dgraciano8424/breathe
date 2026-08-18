@@ -4,6 +4,7 @@ import com.dgraciano.breathe.data.db.LifetimeAggregate
 import com.dgraciano.breathe.data.db.TodayAggregate
 import com.dgraciano.breathe.data.model.Level
 import com.dgraciano.breathe.data.model.UserProgress
+import com.dgraciano.breathe.service.UsageAccessReader
 import com.dgraciano.breathe.ui.achievements.AchievementsViewModel
 import com.dgraciano.breathe.ui.home.HomeViewModel
 import com.dgraciano.breathe.ui.stats.StatsViewModel
@@ -55,8 +56,8 @@ class AggregateConsumersTest {
             repo = mockk { every { getBlockedApps() } returns flowOf(emptyList()) },
             statsRepo = statsRepository,
             achievementRepo = achievementRepository,
-            usageStatsManager = mockk {
-                every { queryAndAggregateUsageStats(any(), any()) } returns emptyMap()
+            usage = mockk {
+                coEvery { usageByPackage(any(), any()) } returns emptyMap()
             },
             context = mockk(relaxed = true),
             usageDispatcher = dispatcher,
