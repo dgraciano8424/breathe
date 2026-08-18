@@ -415,13 +415,13 @@ Run `./gradlew :app:testDebugUnitTest --tests 'com.dgraciano.breathe.ui.appselec
 - Modify: `gradle/libs.versions.toml`
 - Modify: `app/build.gradle.kts`
 - Modify: `app/src/main/java/com/dgraciano/breathe/data/db/BreatheDatabase.kt`
-- Create: `app/schemas/com.dgraciano.breathe.data.db.BreatheDatabase/{1,2,3,4,5}.json`
+- Create: `app/schemas/com.dgraciano.breathe.data.db.BreatheDatabase/{1,2,3,4,5,6}.json`
 - Create: `app/src/androidTest/java/com/dgraciano/breathe/data/db/BreatheDatabaseMigrationTest.kt`
 - Create if required for faithful history: `app/src/androidTest/assets/migrations/*.db`
 
 **Interfaces:**
 - Consumes historical DDL at `292988f`, `3070d80`, `cc1e6a8`, `f52b9e8`, `90f7e30`.
-- Produces reproducible adjacent and 1/2/3/4→5 migration verification.
+- Produces reproducible adjacent and 1/2/3/4/5→6 migration verification, preserving the existing indexed `MIGRATION_5_6` introduced by Task 6.
 
 - [ ] **Step 1: Write migration tests and verify RED**
 
@@ -431,7 +431,7 @@ Expected: missing schemas/plugin validation.
 
 - [ ] **Step 2: Enable export and reconstruct verified history**
 
-Apply Room Gradle plugin, set `room { schemaDirectory("$projectDir/schemas") }`, and `exportSchema = true`. Generate v5. Reconstruct v1–v4 only from historical DDL and validate; use versioned SQLite fixtures when identity/schema JSON cannot be faithful.
+Apply Room Gradle plugin, set `room { schemaDirectory("$projectDir/schemas") }`, and `exportSchema = true`. Generate v6. Reconstruct v1–v5 only from historical DDL and validate; preserve rather than duplicate `MIGRATION_5_6`; use versioned SQLite fixtures when identity/schema JSON cannot be faithful.
 
 - [ ] **Step 3: Verify GREEN**
 
