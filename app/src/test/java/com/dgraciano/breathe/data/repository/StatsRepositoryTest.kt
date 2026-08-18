@@ -12,13 +12,25 @@ import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class StatsRepositoryTest {
 
     private lateinit var dao: InterventionEventDao
@@ -145,5 +157,52 @@ class StatsRepositoryTest {
 
         assertEquals(aggregate, repo.observeLifetimeAggregate().first())
         verify(exactly = 1) { dao.observeLifetimeAggregate() }
+    }
+
+    @Test
+    fun `today aggregate includes an event exactly at local midnight`() = runTest {
+        val zone = ZoneId.of("America/Los_Angeles")
+        val midnight = ZonedDateTime.of(2026, 8, 18, 0, 0, 0, 0, zone).toInstant()
+        val clock = MutableClock(midnight, zone)
+        val aggregate = TodayAggregate(attempts = 1, declined = 1, minutesSaved = 8)
+        every { dao.observeTodayAggregate(midnight.toEpochMilli()) } returns flowOf(aggregate)
+        repo = StatsRepository(dao, clock, zone, flowOf())
+
+        assertEquals(aggregate, repo.observeTodayAggregate().first())
+        verify(exactly = 1) { dao.observeTodayAggregate(midnight.toEpochMilli()) }
+    }
+
+    @Test
+    fun `today aggregate switches to a fresh Room query at local midnight`() = runTest {
+        val zone = ZoneId.of("America/Los_Angeles")
+        val firstDay = ZonedDateTime.of(2026, 8, 18, 23, 59, 0, 0, zone)
+        val nextDay = firstDay.plusDays(1).toLocalDate().atStartOfDay(zone)
+        val clock = MutableClock(firstDay.toInstant(), zone)
+        val rollovers = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val before = MutableStateFlow(TodayAggregate(7, 4, 31))
+        val after = MutableStateFlow(TodayAggregate(0, 0, 0))
+        every { dao.observeTodayAggregate(firstDay.toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()) } returns before
+        every { dao.observeTodayAggregate(nextDay.toInstant().toEpochMilli()) } returns after
+        repo = StatsRepository(dao, clock, zone, rollovers)
+        val observed = mutableListOf<TodayAggregate>()
+        val collection = launch { repo.observeTodayAggregate().take(2).toList(observed) }
+        advanceUntilIdle()
+
+        clock.current = nextDay.toInstant()
+        rollovers.emit(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(TodayAggregate(7, 4, 31), TodayAggregate(0, 0, 0)), observed)
+        verify(exactly = 1) { dao.observeTodayAggregate(nextDay.toInstant().toEpochMilli()) }
+        collection.join()
+    }
+
+    private class MutableClock(
+        var current: Instant,
+        private val zoneId: ZoneId,
+    ) : Clock() {
+        override fun getZone(): ZoneId = zoneId
+        override fun withZone(zone: ZoneId): Clock = MutableClock(current, zone)
+        override fun instant(): Instant = current
     }
 }

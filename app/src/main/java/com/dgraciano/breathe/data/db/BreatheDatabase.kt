@@ -9,7 +9,7 @@ import com.dgraciano.breathe.data.model.InterventionEvent
 
 @Database(
     entities = [BlockedApp::class, InterventionEvent::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class BreatheDatabase : RoomDatabase() {
@@ -60,6 +60,20 @@ abstract class BreatheDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("DROP TABLE IF EXISTS quotes")
+            }
+        }
+
+        /** Adds the indexes used by today's, weekly, and lifetime aggregate queries. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_intervention_events_timestamp` " +
+                        "ON `intervention_events` (`timestamp`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_intervention_events_outcome_timestamp` " +
+                        "ON `intervention_events` (`outcome`, `timestamp`)"
+                )
             }
         }
     }

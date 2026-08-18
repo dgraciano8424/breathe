@@ -59,6 +59,7 @@ class AggregateConsumersTest {
                 every { queryAndAggregateUsageStats(any(), any()) } returns emptyMap()
             },
             context = mockk(relaxed = true),
+            usageDispatcher = dispatcher,
         )
         val insights = StatsViewModel(statsRepository)
 
@@ -125,6 +126,21 @@ class AggregateConsumersTest {
         advanceUntilIdle()
 
         assertEquals(1, today.subscriptionCount.value)
+    }
+
+    @Test
+    fun `Journey keeps one lifetime collector across repeated loads`() = runTest {
+        val lifetime = MutableStateFlow(LifetimeAggregate(declined = 0, minutesSaved = 0))
+        val statsRepository = mockk<StatsRepository> {
+            every { observeLifetimeAggregate() } returns lifetime
+        }
+        val journey = AchievementsViewModel(AchievementRepository(statsRepository))
+
+        journey.load()
+        journey.load()
+        advanceUntilIdle()
+
+        assertEquals(1, lifetime.subscriptionCount.value)
     }
 
     private fun progress(minutes: Long, declines: Long) = UserProgress(

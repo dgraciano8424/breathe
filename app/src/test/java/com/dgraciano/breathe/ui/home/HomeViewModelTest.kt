@@ -76,7 +76,14 @@ class HomeViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     private fun viewModel() =
-        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context)
+        HomeViewModel(
+            repo,
+            statsRepo,
+            achievementRepo,
+            usageStatsManager,
+            context,
+            usageDispatcher = testDispatcher,
+        )
 
     @Test
     fun `blocked apps are paired with their usage minutes`() = runTest {

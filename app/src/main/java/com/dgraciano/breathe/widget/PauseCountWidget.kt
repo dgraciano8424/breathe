@@ -10,10 +10,12 @@ import android.util.Log
 import android.widget.RemoteViews
 import com.dgraciano.breathe.MainActivity
 import com.dgraciano.breathe.R
+import com.dgraciano.breathe.data.db.TodayAggregate
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -43,15 +45,18 @@ class PauseCountWidget : AppWidgetProvider() {
         val pending = goAsync()
         appScope.launch {
             try {
-                val aggregate = statsRepo.observeTodayAggregate().first()
-                appWidgetIds.forEach { id ->
-                    appWidgetManager.updateAppWidget(
-                        id,
-                        buildViews(context, aggregate.declined, aggregate.minutesSaved)
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not refresh widget", e)
+                runWidgetUpdate(
+                    load = { statsRepo.observeTodayAggregate().first() },
+                    update = { aggregate ->
+                        appWidgetIds.forEach { id ->
+                            appWidgetManager.updateAppWidget(
+                                id,
+                                buildViews(context, aggregate.declined, aggregate.minutesSaved)
+                            )
+                        }
+                    },
+                    reportError = { Log.e(TAG, "Could not refresh widget", it) },
+                )
             } finally {
                 pending.finish()
             }
@@ -106,6 +111,20 @@ class PauseCountWidget : AppWidgetProvider() {
                 }
             )
         }
+    }
+}
+
+internal suspend fun runWidgetUpdate(
+    load: suspend () -> TodayAggregate,
+    update: (TodayAggregate) -> Unit,
+    reportError: (Exception) -> Unit,
+) {
+    try {
+        update(load())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        reportError(error)
     }
 }
 

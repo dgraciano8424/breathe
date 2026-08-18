@@ -1,9 +1,16 @@
 package com.dgraciano.breathe.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "intervention_events")
+@Entity(
+    tableName = "intervention_events",
+    indices = [
+        Index(value = ["timestamp"]),
+        Index(value = ["outcome", "timestamp"]),
+    ],
+)
 data class InterventionEvent(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val packageName: String,
