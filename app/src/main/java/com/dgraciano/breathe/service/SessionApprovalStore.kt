@@ -18,4 +18,8 @@ class SessionApprovalStore @Inject constructor() {
     }
 
     fun isApproved(packageName: String): Boolean = approvedPackage.get() == packageName
+
+    fun clear() {
+        approvedPackage.set(null)
+    }
 }

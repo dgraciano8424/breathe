@@ -89,3 +89,79 @@ Result: `BUILD SUCCESSFUL`, exit 0. Parsed JUnit XML totals: 83 tests, 0 failure
 
 Only the Task 4 production/test files and this required report were changed. Task 5 Android
 service, overlay, Activity, ViewModel, and Hilt adapter wiring were not modified.
+
+## Fix round 1
+
+Addressed all coordinator review findings in a separate TDD fix round.
+
+### Behavioral corrections
+
+- Terminal opened/declined callbacks atomically claim a request, then wait for
+  `PauseDecisionSink.record` to return success before approval, dismissal, or publishing ready
+  health. Cancellation remains cooperative and propagates through the returned coroutine `Job`.
+- A failed durable write keeps the presentation open, does not approve the visit, retains the
+  diagnostic cause, and rejects duplicate/stale terminal callbacks. It maps to
+  `ClassifierFailure` + `ReviewSetup`: the phase's closed health table explicitly assigns unknown
+  technical failures to `ClassifierFailure`, and automatic persistence retry would risk a
+  duplicate commit when the repository cannot prove whether storage completed.
+- `OverlayUnavailable` now maps exactly to `ReviewDisplayPermission`. Presentation loss closes the
+  request and suppresses another presentation for that visit; `retry()` never directly invokes
+  `PausePresentation.show`.
+- Pause presentation is gated on all four prerequisites: Accessibility, overlay permission,
+  service connection, and monitored-package readiness. A reducer `RequestPause` is retained as a
+  coordinator-level deferred request until every prerequisite is true.
+- Degraded health is reason-aware and sticky. Permission/service/package updates clear only their
+  corresponding conditions; `PresentationNotConfirmed` and `ClassifierFailure` survive unrelated
+  ready notifications.
+- Idle permission loss publishes `SetupRequired`; only permission loss while a presentation is
+  active/pending publishes `PermissionChanged`.
+- `TryAgain` resets classifier state, approvals, timestamps, deferred work, and retry state, then
+  emits a uniquely identified pure `ReinitializeMonitoring` request for the Task 5 adapter.
+- Reconciliation uses the retained first observation's timestamp, and monitored package input is
+  defensively copied before entering classifier state.
+- A testable diagnostic state retains package-load, overlay, classifier, and persistence causes
+  without external analytics or user-facing exception text.
+- Stale acknowledgement and simultaneous opened/declined races are explicitly covered.
+
+### Fix RED evidence
+
+Each production correction followed a focused failing test:
+
+1. Persistence-ordering tests initially failed because the request was dismissed and opened visits
+   were approved before the sink completed; failure/cancellation tests also exposed the missing
+   diagnostic and returned-job APIs.
+2. Readiness/health tests produced six expected failures: missing Accessibility, overlay, and
+   service prerequisites still presented; idle permission loss reported `PermissionChanged`;
+   timeout degradation was erased; and overlay loss advertised/replayed an immediate retry.
+3. Recovery/diagnostic tests initially failed to compile because classifier-failure and recovery
+   boundaries did not exist. After those APIs landed, the focused suite retained two expected
+   failures proving that deferred requests used the later timestamp and mutable package input
+   leaked into classifier state.
+4. The distinct-recovery-cycle test then failed because repeated recoveries reused one enum-valued
+   state and did not emit a new observable request.
+
+### Fix GREEN and final verification
+
+The coordinator suite passes all 29 tests. The required combined suite passed:
+
+```sh
+JAVA_HOME=/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+ANDROID_HOME=/usr/local/share/android-commandlinetools \
+./gradlew :app:testDebugUnitTest \
+  --tests 'com.dgraciano.breathe.service.InterventionCoordinatorTest' \
+  --tests 'com.dgraciano.breathe.service.ForegroundTransitionClassifierTest' \
+  --tests 'com.dgraciano.breathe.data.repository.InterventionDecisionRepositoryTest'
+```
+
+Result: `BUILD SUCCESSFUL`, exit 0.
+
+The full JVM suite also passed:
+
+```sh
+JAVA_HOME=/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+ANDROID_HOME=/usr/local/share/android-commandlinetools \
+./gradlew :app:testDebugUnitTest
+```
+
+Result: `BUILD SUCCESSFUL`, exit 0. Parsed JUnit XML totals: 99 tests, 0 failures, 0 errors,
+0 skipped. `git diff --check` passed.

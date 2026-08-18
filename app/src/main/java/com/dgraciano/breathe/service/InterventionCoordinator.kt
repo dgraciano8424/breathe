@@ -32,46 +32,55 @@ class InterventionCoordinator @Inject constructor(
     private var accessibilityGranted: Boolean? = null
     private var overlayGranted: Boolean? = null
     private var serviceConnected = false
-    private var hasBeenActive = false
     private var initializationRetryUsed = false
+    private var recoveryInProgress = false
+    private var recoverySequence = 0L
     private var lastEventAtElapsedMs: Long? = null
     private var pending: PendingPresentation? = null
-    private var retryCandidate: RetryCandidate? = null
+    private var deferredPause: DeferredPause? = null
 
     private val mutableHealth = MutableStateFlow<MonitoringHealth>(MonitoringHealth.Initializing)
     val health: StateFlow<MonitoringHealth> = mutableHealth.asStateFlow()
+    private val mutableDiagnostic = MutableStateFlow<MonitoringDiagnostic?>(null)
+    val diagnostic: StateFlow<MonitoringDiagnostic?> = mutableDiagnostic.asStateFlow()
+    private val mutableRecoveryRequest =
+        MutableStateFlow<MonitoringRecoveryRequest?>(null)
+    val recoveryRequest: StateFlow<MonitoringRecoveryRequest?> =
+        mutableRecoveryRequest.asStateFlow()
 
     @Synchronized
     fun updatePermissions(accessibilityGranted: Boolean, overlayGranted: Boolean) {
-        val permissionWasRevoked = (hasBeenActive || pending != null) &&
+        val permissionWasRevoked =
             (this.accessibilityGranted == true && !accessibilityGranted) ||
-            (hasBeenActive || pending != null) &&
                 (this.overlayGranted == true && !overlayGranted)
+        val presentationWasActive = pending != null
         this.accessibilityGranted = accessibilityGranted
         this.overlayGranted = overlayGranted
 
-        if (permissionWasRevoked) {
+        if (permissionWasRevoked && presentationWasActive) {
             closePending(keepForRetry = false)
             mutableHealth.value = MonitoringHealth.Degraded(
                 reason = DegradedReason.PermissionChanged,
                 recoveryAction = MonitoringRecoveryAction.ReviewSetup,
             )
         } else {
-            publishReadiness()
+            publishReadiness(clearing = setOf(DegradedReason.PermissionChanged))
+            presentDeferredIfReady()
         }
     }
 
     @Synchronized
     fun onServiceConnected() {
         serviceConnected = true
-        publishReadiness()
+        publishReadiness(clearing = setOf(DegradedReason.ServiceDisconnected))
+        presentDeferredIfReady()
     }
 
     @Synchronized
     fun onServiceDisconnected() {
         serviceConnected = false
         closePending(keepForRetry = false)
-        mutableHealth.value = MonitoringHealth.Degraded(
+        degradeUnlessAlready(
             reason = DegradedReason.ServiceDisconnected,
             recoveryAction = MonitoringRecoveryAction.ReviewAccessibilitySettings,
         )
@@ -79,27 +88,40 @@ class InterventionCoordinator @Inject constructor(
 
     @Synchronized
     fun onMonitoredPackagesReady(packages: Set<String>) {
+        val priorReason = (mutableHealth.value as? MonitoringHealth.Degraded)?.reason
+        val deferredObservedAt =
+            classifierState.firstDeferredEligibleObservation?.observedAtElapsedMs
         runClassifier {
-            classifier.reconcileAfterMonitoredPackagesReady(classifierState, packages)
-        }?.let(::applyTransition)
-        if (classifierState.monitoredPackagesReady) initializationRetryUsed = false
-        if (pending == null && mutableHealth.value !is MonitoringHealth.Degraded) {
-            publishReadiness()
-        } else if (mutableHealth.value is MonitoringHealth.Degraded &&
-            (mutableHealth.value as MonitoringHealth.Degraded).reason ==
-            DegradedReason.MonitoredAppsUnavailable
+            classifier.reconcileAfterMonitoredPackagesReady(classifierState, packages.toHashSet())
+        }?.let { applyTransition(it, deferredObservedAt) }
+        val recoveryCompleted = classifierState.monitoredPackagesReady && recoveryInProgress
+        publishReadiness(
+            clearing = buildSet {
+                add(DegradedReason.MonitoredAppsUnavailable)
+                if (recoveryInProgress) {
+                    add(DegradedReason.ClassifierFailure)
+                    add(DegradedReason.PresentationNotConfirmed)
+                }
+            },
+        )
+        if (recoveryCompleted && priorReason != DegradedReason.MonitoredAppsUnavailable) {
+            initializationRetryUsed = false
+            recoveryInProgress = false
+        } else if (classifierState.monitoredPackagesReady &&
+            priorReason == DegradedReason.MonitoredAppsUnavailable
         ) {
-            publishReadiness()
+            initializationRetryUsed = false
+            recoveryInProgress = false
         }
+        presentDeferredIfReady()
     }
 
     @Synchronized
     fun onMonitoredPackagesUnavailable(cause: Throwable? = null) {
-        @Suppress("UNUSED_VARIABLE")
-        val diagnosticCause = cause
+        recordDiagnostic(DegradedReason.MonitoredAppsUnavailable, cause)
         classifierState = ForegroundClassifierState()
         closePending(keepForRetry = false)
-        mutableHealth.value = MonitoringHealth.Degraded(
+        degradeUnlessAlready(
             reason = DegradedReason.MonitoredAppsUnavailable,
             recoveryAction = initializationRecoveryAction(),
         )
@@ -111,7 +133,19 @@ class InterventionCoordinator @Inject constructor(
             lastEventAtElapsedMs = observation.observedAtElapsedMs
             if (mutableHealth.value is MonitoringHealth.Active) publishReadiness()
         }
-        runClassifier { classifier.reduce(classifierState, observation) }?.let(::applyTransition)
+        runClassifier { classifier.reduce(classifierState, observation) }
+            ?.let { applyTransition(it, observation.observedAtElapsedMs) }
+    }
+
+    @Synchronized
+    fun onClassifierFailure(cause: Throwable) {
+        recordDiagnostic(DegradedReason.ClassifierFailure, cause)
+        closePending(keepForRetry = false)
+        deferredPause = null
+        degradeUnlessAlready(
+            reason = DegradedReason.ClassifierFailure,
+            recoveryAction = initializationRecoveryAction(),
+        )
     }
 
     /** Executes the one coordinator-owned recovery attempt advertised by health state. */
@@ -120,18 +154,16 @@ class InterventionCoordinator @Inject constructor(
         val degraded = mutableHealth.value as? MonitoringHealth.Degraded ?: return
         if (degraded.recoveryAction != MonitoringRecoveryAction.TryAgain) return
 
-        val candidate = retryCandidate
-        if (candidate != null) {
-            showPause(
-                packageName = candidate.packageName,
-                observedAtElapsedMs = candidate.observedAtElapsedMs,
-                retryCount = candidate.retryCount + 1,
-            )
-        } else {
-            initializationRetryUsed = true
-            classifierState = ForegroundClassifierState()
-            mutableHealth.value = MonitoringHealth.Initializing
-        }
+        initializationRetryUsed = true
+        recoveryInProgress = true
+        classifierState = ForegroundClassifierState()
+        approvals.clear()
+        deferredPause = null
+        lastEventAtElapsedMs = null
+        mutableHealth.value = MonitoringHealth.Initializing
+        recoverySequence += 1
+        mutableRecoveryRequest.value =
+            MonitoringRecoveryRequest.ReinitializeMonitoring(recoverySequence)
     }
 
     @Synchronized
@@ -149,6 +181,7 @@ class InterventionCoordinator @Inject constructor(
         // The presentation adapter owns its Activity fallback. Keep the same request open and
         // guarded by the acknowledgement timeout while Android attempts that fallback.
         if (pending?.request?.id != requestId) return
+        recordDiagnostic(DegradedReason.OverlayUnavailable, cause)
     }
 
     @Synchronized
@@ -160,6 +193,7 @@ class InterventionCoordinator @Inject constructor(
     override fun onPresentationLost(requestId: String, cause: Throwable?) {
         val current = pending ?: return
         if (current.request.id != requestId) return
+        recordDiagnostic(DegradedReason.OverlayUnavailable, cause)
         degradePresentation(
             current = current,
             reason = DegradedReason.OverlayUnavailable,
@@ -175,13 +209,11 @@ class InterventionCoordinator @Inject constructor(
         publishReadiness()
     }
 
-    fun recordOpened(requestId: String, appName: String, reason: String?) {
+    fun recordOpened(requestId: String, appName: String, reason: String?): Job? =
         finishWithDecision(requestId, appName, reason, DecisionOutcome.OPENED)
-    }
 
-    fun recordDeclined(requestId: String, appName: String, reason: String?) {
+    fun recordDeclined(requestId: String, appName: String, reason: String?): Job? =
         finishWithDecision(requestId, appName, reason, DecisionOutcome.DECLINED)
-    }
 
     @Synchronized
     private fun finishWithDecision(
@@ -189,12 +221,11 @@ class InterventionCoordinator @Inject constructor(
         appName: String,
         reason: String?,
         outcome: DecisionOutcome,
-    ) {
-        val current = pending ?: return
-        if (current.request.id != requestId) return
-        if (outcome == DecisionOutcome.OPENED) {
-            approveCurrentVisit(current.request.packageName)
-        }
+    ): Job? {
+        val current = pending ?: return null
+        if (current.request.id != requestId || current.terminalClaimed) return null
+        current.terminalClaimed = true
+        current.timeoutJob.cancel()
         val decision = PauseDecision(
             requestId = requestId,
             packageName = current.request.packageName,
@@ -202,21 +233,62 @@ class InterventionCoordinator @Inject constructor(
             outcome = outcome,
             reason = reason,
         )
-        closePending(keepForRetry = false)
-        publishReadiness()
-        appScope.launch { decisionSink.record(decision) }
+        return appScope.launch {
+            val result = decisionSink.record(decision)
+            if (result.isSuccess) {
+                completeDecisionSuccess(requestId, outcome)
+            } else {
+                completeDecisionFailure(requestId, result.exceptionOrNull())
+            }
+        }
     }
 
-    private fun applyTransition(transition: ForegroundTransition) {
+    @Synchronized
+    private fun completeDecisionSuccess(requestId: String, outcome: DecisionOutcome) {
+        val current = pending ?: return
+        if (current.request.id != requestId || !current.terminalClaimed) return
+        if (outcome == DecisionOutcome.OPENED) approveCurrentVisit(current.request.packageName)
+        closePending(keepForRetry = false)
+        publishReadiness()
+    }
+
+    @Synchronized
+    private fun completeDecisionFailure(requestId: String, cause: Throwable?) {
+        val current = pending ?: return
+        if (current.request.id != requestId || !current.terminalClaimed) return
+        mutableDiagnostic.value = MonitoringDiagnostic(DegradedReason.ClassifierFailure, cause)
+        mutableHealth.value = MonitoringHealth.Degraded(
+            reason = DegradedReason.ClassifierFailure,
+            recoveryAction = MonitoringRecoveryAction.ReviewSetup,
+        )
+    }
+
+    private fun applyTransition(
+        transition: ForegroundTransition,
+        requestObservedAtElapsedMs: Long?,
+    ) {
         classifierState = transition.state
+        if (deferredPause?.packageName != classifierState.currentEligiblePackage) {
+            deferredPause = null
+        }
         transition.actions.forEach { action ->
             when (action) {
                 is ForegroundAction.RevokeApproval -> approvals.revoke(action.packageName)
-                is ForegroundAction.RequestPause -> showPause(
-                    packageName = action.packageName,
-                    observedAtElapsedMs = lastEventAtElapsedMs ?: 0L,
-                    retryCount = 0,
-                )
+                is ForegroundAction.RequestPause -> {
+                    val deferred = DeferredPause(
+                        packageName = action.packageName,
+                        observedAtElapsedMs = requestObservedAtElapsedMs ?: 0L,
+                    )
+                    if (isReadyForPresentation()) {
+                        showPause(
+                            packageName = deferred.packageName,
+                            observedAtElapsedMs = deferred.observedAtElapsedMs,
+                            retryCount = 0,
+                        )
+                    } else {
+                        deferredPause = deferred
+                    }
+                }
             }
         }
     }
@@ -237,11 +309,11 @@ class InterventionCoordinator @Inject constructor(
             onPresentationTimeout(request.id)
         }
         pending = PendingPresentation(request, timeoutJob, retryCount)
-        retryCandidate = null
         publishReadiness()
         try {
             presentation.show(request, this)
-        } catch (_: Exception) {
+        } catch (cause: Exception) {
+            recordDiagnostic(DegradedReason.OverlayUnavailable, cause)
             pending?.takeIf { it.request.id == request.id }?.let {
                 degradePresentation(it, DegradedReason.OverlayUnavailable)
             }
@@ -256,18 +328,13 @@ class InterventionCoordinator @Inject constructor(
     }
 
     private fun degradePresentation(current: PendingPresentation, reason: DegradedReason) {
-        retryCandidate = RetryCandidate(
-            packageName = current.request.packageName,
-            observedAtElapsedMs = current.request.observedAtElapsedMs,
-            retryCount = current.retryCount,
-        )
-        closePending(keepForRetry = true)
+        closePending(keepForRetry = false)
         mutableHealth.value = MonitoringHealth.Degraded(
             reason = reason,
-            recoveryAction = if (current.retryCount == 0) {
-                MonitoringRecoveryAction.TryAgain
-            } else {
-                MonitoringRecoveryAction.ReviewSetup
+            recoveryAction = when (reason) {
+                DegradedReason.OverlayUnavailable ->
+                    MonitoringRecoveryAction.ReviewDisplayPermission
+                else -> initializationRecoveryAction()
             },
         )
     }
@@ -277,8 +344,12 @@ class InterventionCoordinator @Inject constructor(
         if (current.request.id != requestId || current.confirmed) return
         current.confirmed = true
         current.timeoutJob.cancel()
-        retryCandidate = null
-        publishReadiness()
+        publishReadiness(
+            clearing = setOf(
+                DegradedReason.PresentationNotConfirmed,
+                DegradedReason.OverlayUnavailable,
+            ),
+        )
     }
 
     private fun approveCurrentVisit(packageName: String) {
@@ -288,16 +359,16 @@ class InterventionCoordinator @Inject constructor(
 
     private fun closePending(keepForRetry: Boolean) {
         val current = pending ?: run {
-            if (!keepForRetry) retryCandidate = null
             return
         }
         pending = null
         current.timeoutJob.cancel()
         presentation.dismiss(current.request.id)
-        if (!keepForRetry) retryCandidate = null
     }
 
-    private fun publishReadiness() {
+    private fun publishReadiness(clearing: Set<DegradedReason> = emptySet()) {
+        val degraded = mutableHealth.value as? MonitoringHealth.Degraded
+        if (degraded != null && degraded.reason !in clearing) return
         val next = when {
             accessibilityGranted == false ->
                 MonitoringHealth.SetupRequired(SetupRequiredReason.Accessibility)
@@ -307,13 +378,36 @@ class InterventionCoordinator @Inject constructor(
             else -> MonitoringHealth.Active(lastEventAtElapsedMs)
         }
         mutableHealth.value = next
-        if (next is MonitoringHealth.Active) hasBeenActive = true
+    }
+
+    private fun presentDeferredIfReady() {
+        val deferred = deferredPause ?: return
+        if (!isReadyForPresentation() ||
+            classifierState.currentEligiblePackage != deferred.packageName
+        ) return
+        deferredPause = null
+        showPause(deferred.packageName, deferred.observedAtElapsedMs, retryCount = 0)
+    }
+
+    private fun isReadyForPresentation(): Boolean =
+        accessibilityGranted == true &&
+            overlayGranted == true &&
+            serviceConnected &&
+            classifierState.monitoredPackagesReady
+
+    private fun degradeUnlessAlready(
+        reason: DegradedReason,
+        recoveryAction: MonitoringRecoveryAction,
+    ) {
+        if (mutableHealth.value is MonitoringHealth.Degraded) return
+        mutableHealth.value = MonitoringHealth.Degraded(reason, recoveryAction)
     }
 
     private inline fun runClassifier(block: () -> ForegroundTransition): ForegroundTransition? =
         try {
             block()
-        } catch (_: Exception) {
+        } catch (cause: Exception) {
+            recordDiagnostic(DegradedReason.ClassifierFailure, cause)
             closePending(keepForRetry = false)
             mutableHealth.value = MonitoringHealth.Degraded(
                 reason = DegradedReason.ClassifierFailure,
@@ -321,6 +415,10 @@ class InterventionCoordinator @Inject constructor(
             )
             null
         }
+
+    private fun recordDiagnostic(reason: DegradedReason, cause: Throwable?) {
+        mutableDiagnostic.value = MonitoringDiagnostic(reason, cause)
+    }
 
     private fun initializationRecoveryAction(): MonitoringRecoveryAction =
         if (initializationRetryUsed) {
@@ -334,12 +432,12 @@ class InterventionCoordinator @Inject constructor(
         val timeoutJob: Job,
         val retryCount: Int,
         var confirmed: Boolean = false,
+        var terminalClaimed: Boolean = false,
     )
 
-    private data class RetryCandidate(
+    private data class DeferredPause(
         val packageName: String,
         val observedAtElapsedMs: Long,
-        val retryCount: Int,
     )
 
     private companion object {

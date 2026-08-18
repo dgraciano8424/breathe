@@ -35,3 +35,14 @@ enum class MonitoringRecoveryAction {
     ReviewAccessibilitySettings,
     ReviewDisplayPermission,
 }
+
+/** Last technical cause retained for diagnostics without exposing it through user-facing health. */
+data class MonitoringDiagnostic(
+    val reason: DegradedReason,
+    val cause: Throwable?,
+)
+
+/** Pure, uniquely identifiable request consumed by the Android adapter in Task 5. */
+sealed interface MonitoringRecoveryRequest {
+    data class ReinitializeMonitoring(val sequence: Long) : MonitoringRecoveryRequest
+}
