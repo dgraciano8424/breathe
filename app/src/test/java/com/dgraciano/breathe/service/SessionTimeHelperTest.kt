@@ -8,6 +8,7 @@ import io.mockk.mockkConstructor
 import io.mockk.slot
 import io.mockk.unmockkConstructor
 import io.mockk.verify
+import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -181,5 +182,19 @@ class SessionTimeHelperTest {
         stubQueries(short)
 
         assertTrue(helper.getAvgSessionMinutes("com.social") >= 1)
+    }
+
+    @Test
+    fun `usage access denial returns no package usage`() = runTest {
+        every { usageStatsManager.queryUsageStats(any(), any(), any()) } throws SecurityException()
+
+        assertEquals(emptyMap<String, Long>(), helper.usageByPackage(1L, 2L))
+    }
+
+    @Test
+    fun `usage access denial returns zero average session minutes`() = runTest {
+        every { usageStatsManager.queryEvents(any(), any()) } throws SecurityException()
+
+        assertEquals(0, helper.averageSessionMinutes("com.social"))
     }
 }

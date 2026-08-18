@@ -23,7 +23,9 @@ class InterventionDecisionRepository @Inject constructor(
     override suspend fun record(decision: PauseDecision): Result<Long> {
         val eventId = try {
             dao.insert(decision.toEvent())
-        } catch (error: Throwable) {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
             return Result.failure(error)
         }
 
@@ -41,7 +43,7 @@ class InterventionDecisionRepository @Inject constructor(
             widget.refresh()
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Throwable) {
+        } catch (_: Exception) {
             // The initial decision is already durable; usage is optional enrichment only.
         }
     }

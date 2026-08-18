@@ -73,6 +73,22 @@ class InterventionDecisionRepositoryTest {
     }
 
     @Test
+    fun `cancelled insert propagates without refreshing or reading usage`() = runTest {
+        coEvery { dao.insert(any()) } throws CancellationException("cancelled")
+
+        try {
+            sink.record(decision("com.social", DecisionOutcome.DECLINED, null))
+            fail("Expected insert cancellation to propagate")
+        } catch (_: CancellationException) {
+            // Cancellation must not be represented as a persistence failure result.
+        }
+
+        verify(exactly = 0) { widget.refresh() }
+        coVerify(exactly = 0) { usage.averageSessionMinutes(any()) }
+        coVerify(exactly = 0) { dao.updateMinutesSaved(any(), any()) }
+    }
+
+    @Test
     fun `failed estimate keeps committed decision and skips second refresh`() = runTest {
         coEvery { dao.insert(any()) } returns 42L
         coEvery { usage.averageSessionMinutes("com.social") } throws IllegalStateException("usage unavailable")
