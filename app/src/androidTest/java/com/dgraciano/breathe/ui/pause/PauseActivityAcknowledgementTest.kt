@@ -16,6 +16,7 @@ import com.dgraciano.breathe.service.MonitoringHealth
 import com.dgraciano.breathe.service.PausePresentation
 import com.dgraciano.breathe.service.PausePresentationCallbacks
 import com.dgraciano.breathe.service.PauseRequest
+import com.dgraciano.breathe.service.UsageAccessReader
 import dagger.hilt.android.testing.BindValue
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -42,6 +43,13 @@ class PauseActivityAcknowledgementTest {
     @JvmField
     val decisionSink: PauseDecisionSink = object : PauseDecisionSink {
         override suspend fun record(decision: PauseDecision): Result<Long> = Result.success(1L)
+    }
+
+    @BindValue
+    @JvmField
+    val usageAccessReader: UsageAccessReader = object : UsageAccessReader {
+        override suspend fun usageByPackage(startMs: Long, endMs: Long) = emptyMap<String, Long>()
+        override suspend fun averageSessionMinutes(packageName: String) = 0
     }
 
     @Inject lateinit var coordinator: InterventionCoordinator
