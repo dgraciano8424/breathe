@@ -3,19 +3,20 @@ package com.dgraciano.breathe.ui.home
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import com.dgraciano.breathe.data.db.TodayAggregate
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.Level
 import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -52,19 +53,17 @@ class HomeViewModelTest {
 
         repo = mockk { every { getBlockedApps() } returns blockedApps }
         statsRepo = mockk {
-            coEvery { getTodayTotalAttempts() } returns 0
-            coEvery { getTodayDeclined() } returns 0
-            coEvery { getTodayMinutesSaved() } returns 0
+            every { observeTodayAggregate() } returns flowOf(TodayAggregate(0, 0, 0))
         }
         achievementRepo = mockk {
-            coEvery { getUserProgress() } returns UserProgress(
+            every { observeUserProgress() } returns flowOf(UserProgress(
                 totalMinutesSaved = 0,
                 lifetimeDeclines = 0,
                 currentLevel = Level(0, "Drift", "🌊", "", 0),
                 nextLevel = null,
                 progressToNext = 0f,
                 badges = emptyList()
-            )
+            ))
         }
         usageStatsManager = mockk {
             every { queryAndAggregateUsageStats(any(), any()) } returns

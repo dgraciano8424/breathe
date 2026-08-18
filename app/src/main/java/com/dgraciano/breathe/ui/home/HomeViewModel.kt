@@ -63,6 +63,7 @@ class HomeViewModel @Inject constructor(
 
     init {
         refreshMonitoringState()
+        observeStats()
         refreshStats()
         loadAppsWithStats()
     }
@@ -113,15 +114,21 @@ class HomeViewModel @Inject constructor(
             BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)
     }
 
-    fun refreshStats() {
-        refreshUsage()
+    private fun observeStats() {
         viewModelScope.launch {
-            _todayAttempts.value = statsRepo.getTodayTotalAttempts()
-            _todayDeclined.value = statsRepo.getTodayDeclined()
-            _todayMinutesSaved.value = statsRepo.getTodayMinutesSaved()
-            val userProgress = achievementRepo.getUserProgress()
-            _progress.value = userProgress
-            _nimbusStrength.value = userProgress.currentLevel.index + 1
+            statsRepo.observeTodayAggregate().collect { aggregate ->
+                _todayAttempts.value = aggregate.attempts
+                _todayDeclined.value = aggregate.declined
+                _todayMinutesSaved.value = aggregate.minutesSaved
+            }
+        }
+        viewModelScope.launch {
+            achievementRepo.observeUserProgress().collect { userProgress ->
+                _progress.value = userProgress
+                _nimbusStrength.value = userProgress.currentLevel.index + 1
+            }
         }
     }
+
+    fun refreshStats() = refreshUsage()
 }

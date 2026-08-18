@@ -1,11 +1,17 @@
 package com.dgraciano.breathe.data.repository
 
 import com.dgraciano.breathe.data.db.InterventionEventDao
+import com.dgraciano.breathe.data.db.LifetimeAggregate
+import com.dgraciano.breathe.data.db.TodayAggregate
 import com.dgraciano.breathe.data.model.InterventionEvent
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -115,5 +121,29 @@ class StatsRepositoryTest {
         repo.recordEvent(event)
 
         coVerify(exactly = 1) { dao.insert(event) }
+    }
+
+    @Test
+    fun `today aggregate observes the committed Room projection since midnight`() = runTest {
+        val since = slot<Long>()
+        val aggregate = TodayAggregate(attempts = 4, declined = 3, minutesSaved = 27)
+        every { dao.observeTodayAggregate(capture(since)) } returns flowOf(aggregate)
+
+        assertEquals(aggregate, repo.observeTodayAggregate().first())
+
+        val calendar = Calendar.getInstance().apply { timeInMillis = since.captured }
+        assertEquals(0, calendar.get(Calendar.HOUR_OF_DAY))
+        assertEquals(0, calendar.get(Calendar.MINUTE))
+        assertEquals(0, calendar.get(Calendar.SECOND))
+        assertEquals(0, calendar.get(Calendar.MILLISECOND))
+    }
+
+    @Test
+    fun `lifetime aggregate exposes the single committed Room projection`() = runTest {
+        val aggregate = LifetimeAggregate(declined = 18, minutesSaved = 135)
+        every { dao.observeLifetimeAggregate() } returns flowOf(aggregate)
+
+        assertEquals(aggregate, repo.observeLifetimeAggregate().first())
+        verify(exactly = 1) { dao.observeLifetimeAggregate() }
     }
 }

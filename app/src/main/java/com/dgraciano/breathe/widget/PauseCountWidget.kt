@@ -14,6 +14,7 @@ import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -42,12 +43,11 @@ class PauseCountWidget : AppWidgetProvider() {
         val pending = goAsync()
         appScope.launch {
             try {
-                val declined = statsRepo.getTodayDeclined()
-                val minutesSaved = statsRepo.getTodayMinutesSaved()
+                val aggregate = statsRepo.observeTodayAggregate().first()
                 appWidgetIds.forEach { id ->
                     appWidgetManager.updateAppWidget(
                         id,
-                        buildViews(context, declined, minutesSaved)
+                        buildViews(context, aggregate.declined, aggregate.minutesSaved)
                     )
                 }
             } catch (e: Exception) {

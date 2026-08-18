@@ -1,6 +1,8 @@
 package com.dgraciano.breathe.data.repository
 
 import com.dgraciano.breathe.data.db.InterventionEventDao
+import com.dgraciano.breathe.data.db.LifetimeAggregate
+import com.dgraciano.breathe.data.db.TodayAggregate
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.data.model.InterventionEvent
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +34,12 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
     suspend fun getTodayTotalAttempts(): Int = dao.getTotalAttempts(startOfToday())
 
     suspend fun getTodayDeclined(): Int = dao.getTotalDeclined(startOfToday())
+
+    fun observeTodayAggregate(): Flow<TodayAggregate> =
+        dao.observeTodayAggregate(startOfToday())
+
+    fun observeLifetimeAggregate(): Flow<LifetimeAggregate> =
+        dao.observeLifetimeAggregate()
 
     suspend fun getWeeklyTotalAttempts(): Int = dao.getTotalAttempts(startOfWeek())
 

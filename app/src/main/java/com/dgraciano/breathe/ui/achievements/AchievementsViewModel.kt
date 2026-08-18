@@ -20,7 +20,7 @@ class AchievementsViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _progress.value = repo.getUserProgress()
+            repo.observeUserProgress().collect { _progress.value = it }
         }
     }
 }

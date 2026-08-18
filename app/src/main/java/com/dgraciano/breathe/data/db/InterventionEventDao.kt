@@ -24,6 +24,15 @@ interface InterventionEventDao {
     suspend fun getTotalDeclined(since: Long): Int
 
     @Query("""
+        SELECT COUNT(*) AS attempts,
+               COUNT(CASE WHEN outcome = 'DECLINED' THEN 1 END) AS declined,
+               COALESCE(SUM(CASE WHEN outcome = 'DECLINED' THEN minutesSaved ELSE 0 END), 0) AS minutesSaved
+        FROM intervention_events
+        WHERE timestamp > :since
+    """)
+    fun observeTodayAggregate(since: Long): Flow<TodayAggregate>
+
+    @Query("""
         SELECT packageName, appName, COUNT(*) as count
         FROM intervention_events
         WHERE timestamp > :since
@@ -47,4 +56,12 @@ interface InterventionEventDao {
 
     @Query("SELECT COUNT(*) FROM intervention_events WHERE outcome = 'DECLINED'")
     suspend fun getLifetimeDeclined(): Long
+
+    @Query("""
+        SELECT COUNT(*) AS declined,
+               COALESCE(SUM(minutesSaved), 0) AS minutesSaved
+        FROM intervention_events
+        WHERE outcome = 'DECLINED'
+    """)
+    fun observeLifetimeAggregate(): Flow<LifetimeAggregate>
 }

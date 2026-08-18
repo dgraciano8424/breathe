@@ -1,18 +1,22 @@
 package com.dgraciano.breathe.data.repository
 
-import com.dgraciano.breathe.data.db.InterventionEventDao
 import com.dgraciano.breathe.data.model.Achievements
 import com.dgraciano.breathe.data.model.UserProgress
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AchievementRepository @Inject constructor(
-    private val dao: InterventionEventDao
+    private val statsRepository: StatsRepository,
 ) {
-    suspend fun getUserProgress(): UserProgress {
-        val totalMinutes = dao.getTotalMinutesSaved()
-        val declines     = dao.getLifetimeDeclined()
+    fun observeUserProgress(): Flow<UserProgress> =
+        statsRepository.observeLifetimeAggregate().map { aggregate ->
+            userProgress(aggregate.minutesSaved, aggregate.declined)
+        }
+
+    private fun userProgress(totalMinutes: Long, declines: Long): UserProgress {
         val level        = Achievements.computeLevel(totalMinutes)
         val next         = Achievements.nextLevel(level)
         return UserProgress(

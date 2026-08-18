@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.data.repository.StatsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -30,38 +31,40 @@ class StatsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(StatsUiState())
     val state: StateFlow<StatsUiState> = _state
+    private var statsJob: Job? = null
 
     init {
         loadStats()
     }
 
     fun loadStats() {
-        viewModelScope.launch {
-            val todayDeclined = statsRepo.getTodayDeclined()
-            val streak = statsRepo.getFocusStreak()
+        if (statsJob?.isActive == true) return
+        statsJob = viewModelScope.launch {
+            statsRepo.observeTodayAggregate().collect { today ->
+                val streak = statsRepo.getFocusStreak()
 
-            // Real, per-event minutes recorded at decline time — not an estimate.
-            val savedMinutes = statsRepo.getTodayMinutesSaved()
-            val activity = when {
-                savedMinutes >= 60 -> "read 30 pages of a physical book"
-                savedMinutes >= 30 -> "take a long walk in the park"
-                savedMinutes >= 15 -> "call a friend just to say hello"
-                savedMinutes > 0 -> "practice 5 minutes of deep breathing"
-                else -> ""
+                // Real, per-event minutes recorded at decline time — not an estimate.
+                val activity = when {
+                    today.minutesSaved >= 60 -> "read 30 pages of a physical book"
+                    today.minutesSaved >= 30 -> "take a long walk in the park"
+                    today.minutesSaved >= 15 -> "call a friend just to say hello"
+                    today.minutesSaved > 0 -> "practice 5 minutes of deep breathing"
+                    else -> ""
+                }
+
+                _state.value = StatsUiState(
+                    todayAttempts = today.attempts,
+                    todayDeclined = today.declined,
+                    weeklyAttempts = statsRepo.getWeeklyTotalAttempts(),
+                    weeklyDeclined = statsRepo.getWeeklyDeclined(),
+                    focusStreak = streak,
+                    todayMinutesSaved = today.minutesSaved,
+                    weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
+                    lifeWonBackActivity = activity,
+                    topApps = statsRepo.getTopAppsThisWeek(),
+                    isLoading = false
+                )
             }
-
-            _state.value = StatsUiState(
-                todayAttempts = statsRepo.getTodayTotalAttempts(),
-                todayDeclined = todayDeclined,
-                weeklyAttempts = statsRepo.getWeeklyTotalAttempts(),
-                weeklyDeclined = statsRepo.getWeeklyDeclined(),
-                focusStreak = streak,
-                todayMinutesSaved = savedMinutes,
-                weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
-                lifeWonBackActivity = activity,
-                topApps = statsRepo.getTopAppsThisWeek(),
-                isLoading = false
-            )
         }
     }
 }
