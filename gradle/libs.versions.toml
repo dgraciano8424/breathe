@@ -32,6 +32,13 @@ savedstate = { group = "androidx.savedstate", name = "savedstate-ktx", version.r
 test-junit = { group = "junit", name = "junit", version = "4.13.2" }
 test-coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 test-mockk = { group = "io.mockk", name = "mockk", version = "1.13.11" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version = "1.6.2" }
+androidx-test-junit = { group = "androidx.test.ext", name = "junit", version = "1.2.1" }
+androidx-test-rules = { group = "androidx.test", name = "rules", version = "1.6.1" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+hilt-android-testing = { group = "com.google.dagger", name = "hilt-android-testing", version.ref = "hilt" }
+room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
