@@ -167,7 +167,7 @@ class PauseViewModelTest {
     }
 
     @Test
-    fun `recordDeclined then recordOpened both use the correct package`() = runTest {
+    fun `repeated conflicting choices record only the first choice`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val events = mutableListOf<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
@@ -176,11 +176,10 @@ class PauseViewModelTest {
         viewModel.recordDeclined()
         viewModel.recordOpened()
 
-        assertEquals(2, events.size)
+        assertEquals(1, events.size)
         assertEquals("com.target.app", events[0].packageName)
-        assertEquals("com.target.app", events[1].packageName)
         assertEquals(InterventionEvent.OUTCOME_DECLINED, events[0].outcome)
-        assertEquals(InterventionEvent.OUTCOME_OPENED, events[1].outcome)
+        verify(exactly = 0) { sessionApprovalStore.approve(any()) }
     }
 
     @Test
@@ -268,7 +267,7 @@ class PauseViewModelTest {
         viewModel.recordDeclined()
         viewModel.recordOpened()
 
-        coVerify(exactly = 2) { statsRepo.recordEvent(any()) }
+        coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
     }
 
     @Test
@@ -286,4 +285,39 @@ class PauseViewModelTest {
             assertEquals("com.first", events.single().packageName)
             assertEquals("First App", events.single().appName)
         }
+
+    @Test
+    fun `a new pause clears its reason and permits a new choice`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        val events = mutableListOf<InterventionEvent>()
+        coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
+        viewModel.init("com.first", "First")
+        val firstId = viewModel.sessionId.value
+        viewModel.selectReason(InterventionEvent.REASON_BORED)
+        viewModel.recordDeclined()
+        viewModel.init("com.second", "Second")
+        assertNull(viewModel.selectedReason.value)
+        assertEquals(firstId + 1, viewModel.sessionId.value)
+        viewModel.recordOpened()
+        assertEquals(listOf("com.first", "com.second"), events.map { it.packageName })
+        assertNull(events[1].reason)
+    }
+
+    @Test
+    fun `late initialization for the previous app cannot overwrite a new pause`() = runTest {
+        val waiting = kotlinx.coroutines.CompletableDeferred<Int>()
+        coEvery { appRepo.getPauseSeconds("com.first") } coAnswers {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { waiting.await() }
+        }
+        coEvery { appRepo.getPauseSeconds("com.second") } returns 5
+        coEvery { statsRepo.getTodayAttemptCount("com.first") } returns 90
+        coEvery { statsRepo.getTodayAttemptCount("com.second") } returns 2
+        viewModel.init("com.first", "First")
+        assertEquals(false, viewModel.ready.value)
+        viewModel.init("com.second", "Second")
+        waiting.complete(60)
+        assertEquals(5, viewModel.pauseSeconds.value)
+        assertEquals(3, viewModel.attemptCount.value)
+        assertEquals(true, viewModel.ready.value)
+    }
 }

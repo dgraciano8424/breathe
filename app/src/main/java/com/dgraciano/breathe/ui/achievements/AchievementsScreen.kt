@@ -180,9 +180,9 @@ private fun TimeSavedCard(p: UserProgress) {
             modifier = Modifier.fillMaxWidth().padding(20.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            TimeStat(value = p.hoursDisplay, label = "Time saved")
+            TimeStat(value = p.hoursDisplay, label = "Estimated time")
             Box(Modifier.width(1.dp).height(40.dp).background(BreatheDivider))
-            TimeStat(value = "${p.lifetimeDeclines}", label = "Resisted")
+            TimeStat(value = "${p.lifetimeDeclines}", label = "Went back")
             Box(Modifier.width(1.dp).height(40.dp).background(BreatheDivider))
             TimeStat(value = "${p.badges.count { it.unlocked }}", label = "Badges")
         }

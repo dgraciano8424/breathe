@@ -49,7 +49,7 @@ fun StatsScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text("Insights & Fulfillment", color = BreatheTextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("Your patterns", color = BreatheTextPrimary, fontWeight = FontWeight.SemiBold)
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -105,7 +105,7 @@ fun StatsScreen(
                         StatCard(
                             modifier = Modifier.weight(1f),
                             value = "${state.todayDeclined}",
-                            label = "Resisted",
+                            label = "Went back",
                             accent = BreatheSecondary
                         )
                     }
@@ -113,11 +113,11 @@ fun StatsScreen(
                     SectionLabel("Weekly Growth")
                     StatCardLarge(
                         value = "${state.weeklyDeclined}",
-                        label = "Total times you chose presence over scrolling",
+                        label = "Times you chose to go back",
                         subtext = if (state.weeklyMinutesSaved > 0) {
-                            "That's ${formatDuration(state.weeklyMinutesSaved)} reclaimed this week."
+                            "Estimated skipped session time: ${formatDuration(state.weeklyMinutesSaved)} this week."
                         } else {
-                            "Your reclaimed time this week will appear here."
+                            "Your choices this week will appear here."
                         },
                         accent = BreatheSecondary
                     )
@@ -137,7 +137,7 @@ fun StatsScreen(
 @Composable
 fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Focus Streak Card
+        // Recent choices Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -148,8 +148,8 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = BreathePrimary, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.width(16.dp))
                 Column {
-                    Text("Focus Streak", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BreatheTextPrimary)
-                    Text("$streak consecutive mindful choices", color = BreatheSecondary, fontSize = 14.sp)
+                    Text("Recent choices", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BreatheTextPrimary)
+                    Text("$streak consecutive choices to go back", color = BreatheSecondary, fontSize = 14.sp)
                 }
             }
         }
@@ -165,7 +165,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Icon(Icons.Default.NaturePeople, contentDescription = null, tint = BreatheSecondary, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.width(16.dp))
                 Column {
-                    Text("Time Won Back", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
+                    Text("Estimated skipped session time", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = if (minutesSaved > 0) formatDuration(minutesSaved) else "Nothing yet today",
@@ -176,9 +176,9 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = if (minutesSaved > 0 && activity.isNotEmpty()) {
-                            "Reclaimed today — enough to $activity."
+                            "One possibility for that time: $activity."
                         } else {
-                            "Resist a distraction and your reclaimed time shows up here."
+                            "An estimate appears after you choose to go back."
                         },
                         color = BreatheTextSecondary,
                         fontSize = 14.sp,
@@ -189,7 +189,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
         }
         
         Text(
-            text = "Tip: High-dopamine scrolling creates 'attention residue'. Even a 5-minute walk clears your mind more than 50 minutes of scrolling.",
+            text = "These are estimates based on past app sessions, or a 20-minute fallback when no history is available. Breathe cannot measure what you do after going back. Continuing can be an intentional choice too.",
             fontSize = 12.sp,
             color = BreatheTextMuted,
             fontStyle = FontStyle.Italic,

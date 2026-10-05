@@ -368,7 +368,7 @@ private fun JourneyCard(
 }
 
 private fun nextLevelLabel(progress: UserProgress): String {
-    val next = progress.nextLevel ?: return "Highest level reached — ${progress.hoursDisplay} reclaimed"
+    val next = progress.nextLevel ?: return "Highest level reached — ${progress.hoursDisplay} estimated skipped session time"
     val remaining = (next.minMinutes - progress.totalMinutesSaved).coerceAtLeast(0)
     return "${formatMinutes(remaining)} of mindful time until ${next.name}"
 }
@@ -399,7 +399,7 @@ private fun InsightsCard(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = progress?.let { "${it.hoursDisplay} reclaimed so far" } ?: "See your progress",
+                text = progress?.let { "${it.hoursDisplay} estimated skipped session time so far" } ?: "See your progress",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheTextPrimary
@@ -445,7 +445,7 @@ private fun TodaySummaryCard(
                 .height(36.dp)
                 .background(BreatheDivider)
         )
-        SummaryItem(value = "$declined", label = "Resisted")
+        SummaryItem(value = "$declined", label = "Went back")
         Box(
             modifier = Modifier
                 .width(1.dp)

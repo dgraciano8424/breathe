@@ -85,6 +85,7 @@ fun OnboardingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -112,13 +113,13 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Digital Sanctuary",
+                text = "Welcome to Breathe",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheTextPrimary
             )
             Text(
-                text = "Let's set up your mindful space.",
+                text = "Choose a small pause before the apps that pull you in.",
                 textAlign = TextAlign.Center,
                 fontSize = 15.sp,
                 color = BreatheTextSecondary
@@ -171,7 +172,7 @@ fun OnboardingScreen(
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BreatheSecondary)
                 ) {
-                    Text("Enter the Sanctuary", fontWeight = FontWeight.Bold)
+                    Text("Choose your apps", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -211,14 +212,14 @@ private fun AccessibilityDisclosureDialog(
                 Text(
                     "Breathe uses Android's accessibility service to detect which app has " +
                         "just come to the front. That is the only way to show your pause " +
-                        "before the app opens.",
+                        "when the app comes to the foreground.",
                     color = BreatheTextSecondary,
                     fontSize = 14.sp
                 )
                 Text(
                     "It reads only the name of the app being opened. It does not read the " +
                         "contents of your screen, your messages, or anything you type, and " +
-                        "it never performs actions on your behalf.",
+                        "it only opens your home screen when you choose Go back.",
                     color = BreatheTextSecondary,
                     fontSize = 14.sp
                 )

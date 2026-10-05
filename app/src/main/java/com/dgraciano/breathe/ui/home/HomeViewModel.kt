@@ -13,7 +13,8 @@ import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.BreatheAccessibilityService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import com.dgraciano.breathe.di.IoDispatcher
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -30,7 +31,8 @@ class HomeViewModel @Inject constructor(
     private val statsRepo: StatsRepository,
     private val achievementRepo: AchievementRepository,
     private val usageStatsManager: UsageStatsManager,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _blockedAppsWithStats = MutableStateFlow<List<BlockedAppWithStats>>(emptyList())
@@ -86,7 +88,7 @@ class HomeViewModel @Inject constructor(
      * optional, so a missing grant means "no times to show", not a failure.
      */
     private fun refreshUsage() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             val now = System.currentTimeMillis()
             val start = now - TimeUnit.DAYS.toMillis(7)
             _usageMinutes.value = runCatching {

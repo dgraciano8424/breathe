@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
@@ -37,6 +38,7 @@ class PauseActivity : ComponentActivity() {
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: blockedPackage
 
         viewModel.init(blockedPackage, appName)
+        onBackPressedDispatcher.addCallback(this) { declineAndFinish() }
 
         setContent {
             BreatheTheme {
@@ -45,28 +47,24 @@ class PauseActivity : ComponentActivity() {
                 val tip by viewModel.tip.collectAsState()
                 val activity by viewModel.alternativeActivity.collectAsState()
                 val pauseSeconds by viewModel.pauseSeconds.collectAsState()
+                val sessionId by viewModel.sessionId.collectAsState()
+                val ready by viewModel.ready.collectAsState()
 
                 PauseScreen(
-                    appName = appName,
+                    appName = viewModel.currentAppName,
                     attemptCount = attemptCount,
                     tip = tip,
                     alternativeActivity = activity,
                     selectedReason = selectedReason,
                     pauseSeconds = pauseSeconds,
+                    sessionId = sessionId,
+                    ready = ready,
                     onReasonSelected = viewModel::selectReason,
                     onYes = {
                         viewModel.recordOpened()
                         finish()
                     },
-                    onNo = {
-                        viewModel.recordDeclined()
-                        startActivity(
-                            Intent(Intent.ACTION_MAIN)
-                                .addCategory(Intent.CATEGORY_HOME)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                        finish()
-                    }
+                    onNo = ::declineAndFinish
                 )
             }
         }
@@ -78,6 +76,13 @@ class PauseActivity : ComponentActivity() {
         val blockedPackage = intent.getStringExtra(EXTRA_PACKAGE) ?: ""
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: blockedPackage
         viewModel.init(blockedPackage, appName)
+    }
+
+    private fun declineAndFinish() {
+        viewModel.recordDeclined()
+        startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        finish()
     }
 
     companion object {

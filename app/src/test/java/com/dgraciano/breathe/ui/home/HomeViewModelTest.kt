@@ -3,6 +3,8 @@ package com.dgraciano.breathe.ui.home
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancel
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.Level
 import com.dgraciano.breathe.data.model.UserProgress
@@ -39,6 +41,7 @@ class HomeViewModelTest {
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var context: Context
     private lateinit var blockedApps: MutableStateFlow<List<BlockedApp>>
+    private val created = mutableListOf<HomeViewModel>()
 
     private fun app(pkg: String) = BlockedApp(packageName = pkg, appName = pkg)
 
@@ -74,10 +77,14 @@ class HomeViewModelTest {
     }
 
     @After
-    fun tearDown() = Dispatchers.resetMain()
+    fun tearDown() {
+        created.forEach { it.viewModelScope.cancel() }
+        created.clear()
+        Dispatchers.resetMain()
+    }
 
     private fun viewModel() =
-        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context)
+        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context, testDispatcher).also { created.add(it) }
 
     @Test
     fun `blocked apps are paired with their usage minutes`() = runTest {

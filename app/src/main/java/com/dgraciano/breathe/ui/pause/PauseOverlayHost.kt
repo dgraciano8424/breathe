@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -57,6 +58,8 @@ private fun PauseOverlayContent(
     val tip by viewModel.tip.collectAsState()
     val activity by viewModel.alternativeActivity.collectAsState()
     val pauseSeconds by viewModel.pauseSeconds.collectAsState()
+    val sessionId by viewModel.sessionId.collectAsState()
+    val ready by viewModel.ready.collectAsState()
 
     PauseScreen(
         appName = appName,
@@ -65,6 +68,8 @@ private fun PauseOverlayContent(
         alternativeActivity = activity,
         selectedReason = selectedReason,
         pauseSeconds = pauseSeconds,
+        sessionId = sessionId,
+        ready = ready,
         onReasonSelected = viewModel::selectReason,
         onYes = onYes,
         onNo = onNo
@@ -148,6 +153,7 @@ class PauseOverlayHost @Inject constructor(
         viewModel.init(packageName, appName)
 
         val composeView = ComposeView(context).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setViewTreeLifecycleOwner(overlayOwners)
             setViewTreeViewModelStoreOwner(overlayOwners)
             setViewTreeSavedStateRegistryOwner(overlayOwners)
@@ -172,17 +178,24 @@ class PauseOverlayHost @Inject constructor(
         }
 
         // A plain ComposeView cannot intercept the back key, so it is wrapped in a
-        // container that can. Back dismisses without recording, matching what the
-        // Activity did; the monitor re-intervenes after its debounce.
+        // container that can. Back means the same choice as the Go back button;
+        // merely hiding the overlay would expose the app without approval.
         val container = object : FrameLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    viewModel.recordDeclined()
                     hide()
+                    goHome()
                     return true
                 }
                 return super.dispatchKeyEvent(event)
             }
         }.apply {
+            // Compose installs the window recomposer on the window root, not only
+            // the ComposeView child. The root must expose these owners too.
+            setViewTreeLifecycleOwner(overlayOwners)
+            setViewTreeViewModelStoreOwner(overlayOwners)
+            setViewTreeSavedStateRegistryOwner(overlayOwners)
             addView(composeView)
             isFocusableInTouchMode = true
             requestFocus()

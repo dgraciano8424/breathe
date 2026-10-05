@@ -15,6 +15,8 @@ import com.dgraciano.breathe.service.SessionTimeHelper
 import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -48,15 +50,41 @@ class PauseViewModel @Inject constructor(
 
     var currentPackage: String = ""
     var currentAppName: String = ""
+    private var initJob: Job? = null
+    private var generation = 0
+    private var choiceRecorded = false
+    private val _sessionId = MutableStateFlow(0)
+    val sessionId: StateFlow<Int> = _sessionId
+    private val _ready = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = _ready
 
     fun init(packageName: String, appName: String) {
+        initJob?.cancel()
+        val session = ++generation
+        _sessionId.value = session
+        _ready.value = false
+        choiceRecorded = false
+        _selectedReason.value = null
+        _attemptCount.value = 1
         currentPackage = packageName
         currentAppName = appName
         // Reset so a retargeted pause never inherits the previous app's duration.
         _pauseSeconds.value = BlockedApp.DEFAULT_PAUSE_SECONDS
-        viewModelScope.launch {
-            _pauseSeconds.value = appRepo.getPauseSeconds(packageName)
-            _attemptCount.value = statsRepo.getTodayAttemptCount(packageName) + 1
+        initJob = viewModelScope.launch {
+            try {
+                val duration = appRepo.getPauseSeconds(packageName)
+                val attempts = statsRepo.getTodayAttemptCount(packageName) + 1
+                if (session == generation) {
+                    _pauseSeconds.value = duration
+                    _attemptCount.value = attempts
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not load pause settings; using the default pause", error)
+            } finally {
+                if (session == generation) _ready.value = true
+            }
         }
     }
 
@@ -71,6 +99,8 @@ class PauseViewModel @Inject constructor(
      * `onNewIntent` can retarget this ViewModel while the write is in flight.
      */
     fun recordDeclined() {
+        if (choiceRecorded || currentPackage.isBlank()) return
+        choiceRecorded = true
         val packageName = currentPackage
         val appName = currentAppName
         val reason = _selectedReason.value
@@ -91,6 +121,8 @@ class PauseViewModel @Inject constructor(
     }
 
     fun recordOpened() {
+        if (choiceRecorded || currentPackage.isBlank()) return
+        choiceRecorded = true
         // Approve synchronously so the session is granted even if the activity
         // finishes before the coroutine below completes.
         sessionApprovalStore.approve(currentPackage)

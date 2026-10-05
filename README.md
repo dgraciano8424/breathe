@@ -10,7 +10,7 @@ Built as a free alternative to [One Sec](https://one-sec.app), using only public
 
 1. An `AccessibilityService` listens for window-state changes to detect which app has come to the foreground
 2. When a blocked app is detected, a full-screen pause is drawn in an overlay window on top of it
-3. The screen shows a breathing animation, a grounding tip, an optional "why am I opening this?" prompt, and two buttons
+3. The screen shows a breathing animation, an optional grounding tip, an optional "why am I opening this?" prompt, and two buttons
 4. **No, go back** → sends you home. **Yes, open [App]** → lets you through
 
 The pause resets each time you leave and re-open the app, so it shows every time — the friction is the feature.
@@ -116,7 +116,8 @@ see *which* app opened and nothing inside it.
 so the original design polled: `UsageStatsManager` is a pull API you ask "what happened
 recently?" on a timer. Polling has two costs — the timer, and latency, since the pause
 could arrive up to half an interval after the app. Accessibility window events are pushed
-as the window changes, so the pause can be up before the app draws its first frame.
+as the window changes, so the pause can appear promptly when an app comes to the foreground.
+This does not prevent the app from loading content or guarantee that none of it is briefly visible.
 
 **Why not `isAccessibilityTool`?** Because it would be a lie. That flag marks services
 built to assist users with disabilities; Play policy explicitly excludes monitoring apps,
@@ -129,6 +130,8 @@ and claiming it falsely risks losing the developer account.
 ---
 
 ## Roadmap
+
+See [REVIEW.md](REVIEW.md) for the latest reliability changes, verification and recommended product direction. Session-time totals are estimates from past usage, with a 20-minute fallback, rather than measured time saved.
 
 - [x] App icons and launch screen
 - [x] Per-app custom pause duration

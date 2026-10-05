@@ -40,7 +40,7 @@ class StatsViewModel @Inject constructor(
             val todayDeclined = statsRepo.getTodayDeclined()
             val streak = statsRepo.getFocusStreak()
 
-            // Real, per-event minutes recorded at decline time — not an estimate.
+            // Estimated session lengths recorded on each decline, not measured savings.
             val savedMinutes = statsRepo.getTodayMinutesSaved()
             val activity = when {
                 savedMinutes >= 60 -> "read 30 pages of a physical book"
