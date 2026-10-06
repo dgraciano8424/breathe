@@ -12,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
+import java.time.ZonedDateTime
 
 class StatsRepositoryTest {
 
@@ -78,6 +79,42 @@ class StatsRepositoryTest {
         assertEquals(Calendar.MONDAY, cal.get(Calendar.DAY_OF_WEEK))
         assertEquals(0, cal.get(Calendar.HOUR_OF_DAY))
         assertEquals(0, cal.get(Calendar.MINUTE))
+    }
+
+    @Test
+    fun `Sunday weekly totals use the preceding Monday`() = runTest {
+        val captured = slot<Long>()
+        coEvery { dao.getTotalAttempts(capture(captured)) } returns 10
+        repo.clock = { ZonedDateTime.parse("2026-10-04T18:00:00-07:00[America/Los_Angeles]") }
+        repo.getWeeklyTotalAttempts()
+        assertEquals(
+            ZonedDateTime.parse("2026-09-28T00:00:00-07:00[America/Los_Angeles]").toInstant().toEpochMilli(),
+            captured.captured
+        )
+    }
+
+    @Test
+    fun `Monday totals begin at the current Monday rather than the prior week`() = runTest {
+        val captured = slot<Long>()
+        coEvery { dao.getTotalAttempts(capture(captured)) } returns 10
+        repo.clock = { ZonedDateTime.parse("2026-10-05T18:00:00-07:00[America/Los_Angeles]") }
+        repo.getWeeklyTotalAttempts()
+        assertEquals(
+            ZonedDateTime.parse("2026-10-05T00:00:00-07:00[America/Los_Angeles]").toInstant().toEpochMilli(),
+            captured.captured
+        )
+    }
+
+    @Test
+    fun `daily boundary uses local midnight on a daylight saving transition`() = runTest {
+        val captured = slot<Long>()
+        coEvery { dao.getTotalAttempts(capture(captured)) } returns 10
+        repo.clock = { ZonedDateTime.parse("2026-11-01T18:00:00-08:00[America/Los_Angeles]") }
+        repo.getTodayTotalAttempts()
+        assertEquals(
+            ZonedDateTime.parse("2026-11-01T00:00:00-07:00[America/Los_Angeles]").toInstant().toEpochMilli(),
+            captured.captured
+        )
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.dgraciano.breathe.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +23,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -40,6 +43,8 @@ fun HomeScreen(
     onViewStats: () -> Unit,
     onAchievements: () -> Unit,
     onFixPermissions: () -> Unit,
+    onPracticePause: () -> Unit,
+    onSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val apps by viewModel.blockedApps.collectAsState()
@@ -49,6 +54,11 @@ fun HomeScreen(
     val nimbusStrength by viewModel.nimbusStrength.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val isMonitoringActive by viewModel.isMonitoringActive.collectAsState()
+    val savingPackages by viewModel.savingPackages.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel) {
+        viewModel.feedback.collect { snackbarHostState.showSnackbar(it) }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Both permissions are revoked from Settings, which does not take this screen out of
@@ -69,6 +79,7 @@ fun HomeScreen(
         WaveBackground(modifier = Modifier.fillMaxSize())
 
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -113,8 +124,22 @@ fun HomeScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(padding),
+                contentPadding = PaddingValues(bottom = 96.dp)
             ) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("Explore Breathe", style = MaterialTheme.typography.titleMedium)
+                        Row(Modifier.fillMaxWidth()) {
+                            TextButton(onClick = onAddApp, modifier = Modifier.weight(1f)) { Text("Choose apps") }
+                            TextButton(onClick = onSettings, modifier = Modifier.weight(1f)) { Text("Settings") }
+                        }
+                        Row(Modifier.fillMaxWidth()) {
+                            TextButton(onClick = onViewStats, modifier = Modifier.weight(1f)) { Text("Insights") }
+                            TextButton(onClick = onAchievements, modifier = Modifier.weight(1f)) { Text("Achievements") }
+                        }
+                    }
+                }
                 // First, and above everything else: if monitoring is off, no other number
                 // on this screen means what it appears to mean.
                 if (!isMonitoringActive) {
@@ -170,13 +195,13 @@ fun HomeScreen(
                     item {
                         Box(
                             modifier = Modifier
-                                .fillParentMaxSize()
+                                .fillMaxWidth()
                                 .padding(32.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.clickable { onAddApp() }
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -208,12 +233,16 @@ fun HomeScreen(
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "Tap here to add apps you want\na mindful pause before opening.",
+                                    text = "Choose one app you open on autopilot.\nStart small; make room for a breath.",
                                     textAlign = TextAlign.Center,
                                     fontSize = 14.sp,
                                     lineHeight = 20.sp,
                                     color = BreatheTextSecondary
                                 )
+                                Spacer(Modifier.height(16.dp))
+                                Button(onClick = onAddApp) {
+                                    Text("Choose your first app")
+                                }
                             }
                         }
                     }
@@ -231,12 +260,23 @@ fun HomeScreen(
                     items(apps, key = { it.app.packageName }) { appWithStats ->
                         BlockedAppRow(
                             app = appWithStats.app,
+                            isSaving = appWithStats.app.packageName in savingPackages,
                             usageMinutes = appWithStats.usageMinutes,
                             onRemove = { viewModel.removeApp(appWithStats.app) },
                             onPauseSecondsChange = { seconds ->
                                 viewModel.setPauseSeconds(appWithStats.app.packageName, seconds)
                             }
                         )
+                    }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = onPracticePause,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text("Try a practice pause")
                     }
                 }
             }
@@ -445,14 +485,14 @@ private fun TodaySummaryCard(
                 .height(36.dp)
                 .background(BreatheDivider)
         )
-        SummaryItem(value = "$declined", label = "Resisted")
+        SummaryItem(value = "$declined", label = "Chose to leave")
         Box(
             modifier = Modifier
                 .width(1.dp)
                 .height(36.dp)
                 .background(BreatheDivider)
         )
-        SummaryItem(value = formatMinutes(minutesSaved.toLong()), label = "Saved")
+        SummaryItem(value = formatMinutes(minutesSaved.toLong()), label = "Est. saved")
     }
 }
 
@@ -479,7 +519,8 @@ private fun SummaryItem(value: String, label: String) {
 @Composable
 private fun BlockedAppRow(
     app: BlockedApp,
-    usageMinutes: Int,
+    isSaving: Boolean,
+    usageMinutes: Int?,
     onRemove: () -> Unit,
     onPauseSecondsChange: (Int) -> Unit
 ) {
@@ -492,17 +533,18 @@ private fun BlockedAppRow(
                 Text(
                     text = formatUsage(usageMinutes),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (usageMinutes > 60) Color(0xFFFF8A80) else BreatheTextSecondary
+                    color = if ((usageMinutes ?: 0) > 60) Color(0xFFFF8A80) else BreatheTextSecondary
                 )
                 Spacer(Modifier.height(6.dp))
                 PauseDurationPicker(
                     selected = app.pauseSeconds,
+                    enabled = !isSaving,
                     onSelect = onPauseSecondsChange
                 )
             }
         },
         trailingContent = {
-            IconButton(onClick = onRemove) {
+            IconButton(onClick = onRemove, enabled = !isSaving) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "Remove ${app.appName}",
@@ -516,27 +558,36 @@ private fun BlockedAppRow(
 }
 
 /** Row of pause lengths; the selected one is filled in. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PauseDurationPicker(selected: Int, onSelect: (Int) -> Unit) {
-    Row(
+private fun PauseDurationPicker(selected: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.selectableGroup()
     ) {
         Text(
             text = "Pause",
             fontSize = 11.sp,
-            color = BreatheTextMuted
+            color = BreatheTextMuted,
+            modifier = Modifier.align(Alignment.CenterVertically)
         )
         BlockedApp.PAUSE_OPTIONS.forEach { seconds ->
             val isSelected = seconds == selected
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(
                         if (isSelected) BreathePrimary.copy(alpha = 0.22f) else Color.Transparent
                     )
-                    .clickable { onSelect(seconds) }
+                    .selectable(
+                        selected = isSelected,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(seconds) }
+                    )
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             ) {
                 Text(
@@ -550,8 +601,9 @@ private fun PauseDurationPicker(selected: Int, onSelect: (Int) -> Unit) {
     }
 }
 
-private fun formatUsage(minutes: Int): String {
-    if (minutes == 0) return "Mindful today - no usage yet"
+private fun formatUsage(minutes: Int?): String {
+    if (minutes == null) return "No usage data available"
+    if (minutes == 0) return "Less than a minute recorded this week"
     val h = minutes / 60
     val m = minutes % 60
     return when {

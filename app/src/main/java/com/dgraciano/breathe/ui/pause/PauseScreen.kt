@@ -23,7 +23,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -55,7 +54,7 @@ fun PauseScreen(
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
-    var showContent by remember { mutableStateOf(false) }
+    val showContent = true
     var showConfetti by remember { mutableStateOf(false) }
     val reducedMotion = rememberReducedMotion()
 
@@ -70,23 +69,12 @@ fun PauseScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        delay(100)
-        showContent = true
-    }
-
     LaunchedEffect(showConfetti) {
         if (showConfetti) {
             delay(850)
             onNo()
         }
     }
-
-    val brushOffset by animateFloatAsState(
-        targetValue = if (showContent) 0f else 1f,
-        animationSpec = tween(1200, easing = FastOutSlowInEasing),
-        label = "brush"
-    )
 
     val transition = rememberInfiniteTransition(label = "breathe")
 
@@ -124,10 +112,6 @@ fun PauseScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                translationX = -brushOffset * size.width
-                alpha = 1f - (brushOffset * 0.5f)
-            }
     ) {
         Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
             WaveBackground(modifier = Modifier.fillMaxSize())

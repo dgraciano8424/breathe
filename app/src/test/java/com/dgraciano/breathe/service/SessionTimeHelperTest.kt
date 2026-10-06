@@ -91,6 +91,20 @@ class SessionTimeHelperTest {
     }
 
     @Test
+    fun `denied optional usage access falls back instead of losing the event`() {
+        every { usageStatsManager.queryEvents(any(), any()) } throws SecurityException("denied")
+        assertEquals(20, helper.getAvgSessionMinutes("com.social"))
+    }
+
+    @Test
+    fun `permission fallback does not mask history after access is restored`() {
+        every { usageStatsManager.queryEvents(any(), any()) } throws SecurityException("denied")
+        assertEquals(20, helper.getAvgSessionMinutes("com.social"))
+        stubQueries(session("com.social", 7))
+        assertEquals(7, helper.getAvgSessionMinutes("com.social"))
+    }
+
+    @Test
     fun `ignores sessions shorter than the sanity window`() {
         // 2s of foreground time is a bounce, not a session.
         val bounce = listOf(

@@ -14,6 +14,8 @@ import com.dgraciano.breathe.ui.home.HomeScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingViewModel
 import com.dgraciano.breathe.ui.stats.StatsScreen
+import com.dgraciano.breathe.ui.pause.PracticePauseScreen
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 
 object Routes {
     const val ONBOARDING   = "onboarding"
@@ -21,11 +23,14 @@ object Routes {
     const val APP_SELECT   = "app_select"
     const val STATS        = "stats"
     const val ACHIEVEMENTS = "achievements"
+    const val PRACTICE = "practice"
+    const val SETTINGS = "settings"
 }
 
 @Composable
 fun BreatheNavGraph() {
     val nav = rememberNavController()
+    val reducedMotion = rememberReducedMotion()
     val onboardingViewModel: OnboardingViewModel = hiltViewModel()
 
     // Keyed on the two permissions interception actually needs. It used to key on usage
@@ -43,20 +48,25 @@ fun BreatheNavGraph() {
         navController = nav,
         startDestination = startDest,
         enterTransition = {
-            fadeIn(animationSpec = tween(700)) + slideInHorizontally(animationSpec = tween(700)) { it / 10 }
+            if (reducedMotion) EnterTransition.None else
+                fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { it / 10 }
         },
         exitTransition = {
-            fadeOut(animationSpec = tween(700)) + slideOutHorizontally(animationSpec = tween(700)) { -it / 10 }
+            if (reducedMotion) ExitTransition.None else
+                fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { -it / 10 }
         },
         popEnterTransition = {
-            fadeIn(animationSpec = tween(700)) + slideInHorizontally(animationSpec = tween(700)) { -it / 10 }
+            if (reducedMotion) EnterTransition.None else
+                fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { -it / 10 }
         },
         popExitTransition = {
-            fadeOut(animationSpec = tween(700)) + slideOutHorizontally(animationSpec = tween(700)) { it / 10 }
+            if (reducedMotion) ExitTransition.None else
+                fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { it / 10 }
         }
     ) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
+                onPracticePause = { nav.navigate(Routes.PRACTICE) },
                 onPermissionsGranted = {
                     nav.navigate(Routes.HOME) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
@@ -72,7 +82,9 @@ fun BreatheNavGraph() {
                 onAddApp          = { nav.navigate(Routes.APP_SELECT) },
                 onViewStats       = { nav.navigate(Routes.STATS) },
                 onAchievements    = { nav.navigate(Routes.ACHIEVEMENTS) },
-                onFixPermissions  = { nav.navigate(Routes.ONBOARDING) }
+                onFixPermissions  = { nav.navigate(Routes.ONBOARDING) },
+                onPracticePause   = { nav.navigate(Routes.PRACTICE) },
+                onSettings = { nav.navigate(Routes.SETTINGS) }
             )
         }
         composable(Routes.APP_SELECT) {
@@ -83,6 +95,16 @@ fun BreatheNavGraph() {
         }
         composable(Routes.ACHIEVEMENTS) {
             AchievementsScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.PRACTICE) {
+            PracticePauseScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.SETTINGS) {
+            OnboardingScreen(
+                onPermissionsGranted = { nav.popBackStack() },
+                onPracticePause = { nav.navigate(Routes.PRACTICE) },
+                onBack = { nav.popBackStack() }
+            )
         }
     }
 }

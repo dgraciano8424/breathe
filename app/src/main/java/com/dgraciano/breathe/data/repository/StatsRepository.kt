@@ -4,27 +4,27 @@ import com.dgraciano.breathe.data.db.InterventionEventDao
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.data.model.InterventionEvent
 import kotlinx.coroutines.flow.Flow
-import java.util.Calendar
+import java.time.DayOfWeek
+import java.time.ZonedDateTime
+import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class StatsRepository @Inject constructor(private val dao: InterventionEventDao) {
 
-    private fun startOfToday(): Long = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+    internal var clock: () -> ZonedDateTime = { ZonedDateTime.now() }
 
-    private fun startOfWeek(): Long = Calendar.getInstance().apply {
-        set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+    private fun startOfToday(): Long {
+        val now = clock()
+        return now.toLocalDate().atStartOfDay(now.zone).toInstant().toEpochMilli()
+    }
+
+    private fun startOfWeek(): Long {
+        val now = clock()
+        return now.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            .atStartOfDay(now.zone).toInstant().toEpochMilli()
+    }
 
     suspend fun getTodayAttemptCount(packageName: String): Int =
         dao.getAttemptCount(packageName, startOfToday())

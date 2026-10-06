@@ -24,6 +24,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
@@ -36,9 +39,17 @@ fun StatsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var showContent by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.loadStats()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
-        viewModel.loadStats()
         showContent = true
     }
 
@@ -66,8 +77,21 @@ fun StatsScreen(
             containerColor = Color.Transparent
         ) { padding ->
             if (state.isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = BreathePrimary)
+                }
+                return@Scaffold
+            }
+
+            if (state.errorMessage != null) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(state.errorMessage.orEmpty(), textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { viewModel.loadStats() }) { Text("Try again") }
                 }
                 return@Scaffold
             }
@@ -105,7 +129,7 @@ fun StatsScreen(
                         StatCard(
                             modifier = Modifier.weight(1f),
                             value = "${state.todayDeclined}",
-                            label = "Resisted",
+                            label = "Chose to leave",
                             accent = BreatheSecondary
                         )
                     }
@@ -113,9 +137,9 @@ fun StatsScreen(
                     SectionLabel("Weekly Growth")
                     StatCardLarge(
                         value = "${state.weeklyDeclined}",
-                        label = "Total times you chose presence over scrolling",
+                        label = "Times you chose to leave an app",
                         subtext = if (state.weeklyMinutesSaved > 0) {
-                            "That's ${formatDuration(state.weeklyMinutesSaved)} reclaimed this week."
+                            "An estimated ${formatDuration(state.weeklyMinutesSaved)} reclaimed this week."
                         } else {
                             "Your reclaimed time this week will appear here."
                         },
@@ -149,7 +173,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text("Focus Streak", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BreatheTextPrimary)
-                    Text("$streak consecutive mindful choices", color = BreatheSecondary, fontSize = 14.sp)
+                    Text("$streak consecutive choices to leave an app", color = BreatheSecondary, fontSize = 14.sp)
                 }
             }
         }
@@ -165,7 +189,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Icon(Icons.Default.NaturePeople, contentDescription = null, tint = BreatheSecondary, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.width(16.dp))
                 Column {
-                    Text("Time Won Back", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
+                    Text("Estimated Time Won Back", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = if (minutesSaved > 0) formatDuration(minutesSaved) else "Nothing yet today",
@@ -178,7 +202,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                         text = if (minutesSaved > 0 && activity.isNotEmpty()) {
                             "Reclaimed today — enough to $activity."
                         } else {
-                            "Resist a distraction and your reclaimed time shows up here."
+                            "Choose to leave an app and your estimated reclaimed time appears here."
                         },
                         color = BreatheTextSecondary,
                         fontSize = 14.sp,
@@ -189,7 +213,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
         }
         
         Text(
-            text = "Tip: High-dopamine scrolling creates 'attention residue'. Even a 5-minute walk clears your mind more than 50 minutes of scrolling.",
+            text = "Saved time is an estimate based on recent app sessions, with a 20-minute fallback when session history isn't available. It isn't measured free time. Continuing intentionally is a valid choice too.",
             fontSize = 12.sp,
             color = BreatheTextMuted,
             fontStyle = FontStyle.Italic,

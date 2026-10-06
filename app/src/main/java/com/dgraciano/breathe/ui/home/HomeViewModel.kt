@@ -13,7 +13,11 @@ import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.BreatheAccessibilityService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import com.dgraciano.breathe.di.IoDispatcher
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -21,7 +25,7 @@ import javax.inject.Inject
 
 data class BlockedAppWithStats(
     val app: BlockedApp,
-    val usageMinutes: Int
+    val usageMinutes: Int?
 )
 
 @HiltViewModel
@@ -30,7 +34,8 @@ class HomeViewModel @Inject constructor(
     private val statsRepo: StatsRepository,
     private val achievementRepo: AchievementRepository,
     private val usageStatsManager: UsageStatsManager,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _blockedAppsWithStats = MutableStateFlow<List<BlockedAppWithStats>>(emptyList())
@@ -55,6 +60,12 @@ class HomeViewModel @Inject constructor(
     private val _isMonitoringActive = MutableStateFlow(false)
     val isMonitoringActive: StateFlow<Boolean> = _isMonitoringActive
 
+    private val _savingPackages = MutableStateFlow<Set<String>>(emptySet())
+    val savingPackages: StateFlow<Set<String>> = _savingPackages
+    private val messages = Channel<String>(Channel.BUFFERED)
+    val feedback = messages.receiveAsFlow()
+    private var statsJob: Job? = null
+
     /**
      * Per-package foreground minutes over the last 7 days, refreshed on its own schedule
      * rather than recomputed whenever the blocked list changes.
@@ -76,7 +87,7 @@ class HomeViewModel @Inject constructor(
     private fun loadAppsWithStats() {
         viewModelScope.launch {
             combine(repo.getBlockedApps(), _usageMinutes) { apps, usage ->
-                apps.map { app -> BlockedAppWithStats(app, usage[app.packageName] ?: 0) }
+                apps.map { app -> BlockedAppWithStats(app, usage[app.packageName]) }
             }.collect { _blockedAppsWithStats.value = it }
         }
     }
@@ -86,7 +97,7 @@ class HomeViewModel @Inject constructor(
      * optional, so a missing grant means "no times to show", not a failure.
      */
     private fun refreshUsage() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             val now = System.currentTimeMillis()
             val start = now - TimeUnit.DAYS.toMillis(7)
             _usageMinutes.value = runCatching {
@@ -96,11 +107,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun removeApp(app: BlockedApp) = viewModelScope.launch { repo.unblockApp(app) }
+    fun removeApp(app: BlockedApp) = changeApp(app.packageName) { repo.unblockApp(app) }
 
     /** The blocked-app Flow re-emits, so the row updates without extra plumbing. */
-    fun setPauseSeconds(packageName: String, seconds: Int) = viewModelScope.launch {
-        repo.setPauseSeconds(packageName, seconds)
+    fun setPauseSeconds(packageName: String, seconds: Int) {
+        if (seconds !in BlockedApp.PAUSE_OPTIONS) return
+        changeApp(packageName) { repo.setPauseSeconds(packageName, seconds) }
+    }
+
+    private fun changeApp(packageName: String, write: suspend () -> Unit) {
+        if (packageName in _savingPackages.value) return
+        _savingPackages.update { it + packageName }
+        viewModelScope.launch {
+            try {
+                write()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                messages.send("Couldn't save that app change. Your previous setting is still in place. Try again.")
+            } finally {
+                _savingPackages.update { it - packageName }
+            }
+        }
     }
 
     /**
@@ -114,14 +142,25 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshStats() {
+        if (statsJob?.isActive == true) return
         refreshUsage()
-        viewModelScope.launch {
-            _todayAttempts.value = statsRepo.getTodayTotalAttempts()
-            _todayDeclined.value = statsRepo.getTodayDeclined()
-            _todayMinutesSaved.value = statsRepo.getTodayMinutesSaved()
-            val userProgress = achievementRepo.getUserProgress()
-            _progress.value = userProgress
-            _nimbusStrength.value = userProgress.currentLevel.index + 1
+        statsJob = viewModelScope.launch {
+            try {
+                val attempts = statsRepo.getTodayTotalAttempts()
+                val declined = statsRepo.getTodayDeclined()
+                val minutesSaved = statsRepo.getTodayMinutesSaved()
+                val userProgress = achievementRepo.getUserProgress()
+                // Keep the last complete result if any of the reads fail.
+                _todayAttempts.value = attempts
+                _todayDeclined.value = declined
+                _todayMinutesSaved.value = minutesSaved
+                _progress.value = userProgress
+                _nimbusStrength.value = userProgress.currentLevel.index + 1
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                messages.send("Couldn't refresh your home insights. Reopen this screen to try again.")
+            }
         }
     }
 }

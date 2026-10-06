@@ -9,6 +9,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
 import com.dgraciano.breathe.ui.theme.BreatheTheme
+import android.content.pm.ApplicationInfo
 import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -183,10 +185,24 @@ class PauseOverlayHost @Inject constructor(
                 return super.dispatchKeyEvent(event)
             }
         }.apply {
+            // Compose installs its window recomposer on the window's root view.
+            // Owners on the child ComposeView alone do not reach this container.
+            setViewTreeLifecycleOwner(overlayOwners)
+            setViewTreeViewModelStoreOwner(overlayOwners)
+            setViewTreeSavedStateRegistryOwner(overlayOwners)
             addView(composeView)
             isFocusableInTouchMode = true
             requestFocus()
         }
+
+        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                // The child installs its window recomposer during the same attach pass.
+                mainHandler.post { if (root === container) overlayOwners.resume() }
+                view.removeOnAttachStateChangeListener(this)
+            }
+            override fun onViewDetachedFromWindow(view: View) = Unit
+        })
 
         try {
             windowManager.addView(container, layoutParams())
@@ -201,10 +217,12 @@ class PauseOverlayHost @Inject constructor(
 
         root = container
         owners = overlayOwners
+        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "Pause overlay attached")
     }
 
     private fun hideInternal() {
         val container = root ?: return
+        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "Removing pause overlay")
         runCatching { windowManager.removeView(container) }
             .onFailure { Log.w(TAG, "Overlay already detached", it) }
         owners?.destroy()
@@ -255,8 +273,10 @@ class PauseOverlayHost @Inject constructor(
         fun create() {
             // Must restore before the registry is moved past CREATED.
             savedStateController.performRestore(null)
-            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
         }
+
+        fun resume() { lifecycleRegistry.currentState = Lifecycle.State.RESUMED }
 
         fun destroy() {
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED

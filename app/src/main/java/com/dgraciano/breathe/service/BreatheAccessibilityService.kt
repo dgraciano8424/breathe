@@ -3,6 +3,8 @@ package com.dgraciano.breathe.service
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.provider.Settings
+import android.util.Log
+import android.content.pm.ApplicationInfo
 import android.view.accessibility.AccessibilityEvent
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.ui.pause.PauseOverlayHost
@@ -53,6 +55,7 @@ class BreatheAccessibilityService : AccessibilityService() {
         blockedAppsJob = scope.launch {
             appRepository.getBlockedApps().collect { apps ->
                 blockedPackages = apps.map { it.packageName }.toSet()
+                if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d("BreatheDetection", "Monitoring list refreshed: ${blockedPackages.size} apps")
             }
         }
     }
@@ -61,6 +64,9 @@ class BreatheAccessibilityService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val current = event.packageName?.toString() ?: return
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0 && current in blockedPackages) {
+            Log.d("BreatheDetection", "Selected app window: overlay=${pauseOverlayHost.isShowing}, approved=${sessionApprovalStore.isApproved(current)}")
+        }
         if (current == packageName) return
 
         // The overlay draws over the blocked app without displacing it, so events for

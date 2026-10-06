@@ -10,10 +10,14 @@ import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -22,6 +26,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -77,7 +83,7 @@ class HomeViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     private fun viewModel() =
-        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context)
+        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context, testDispatcher)
 
     @Test
     fun `blocked apps are paired with their usage minutes`() = runTest {
@@ -90,13 +96,20 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `an app with no recorded usage reports zero rather than dropping out`() = runTest {
+    fun `an app with no recorded usage reports unknown rather than dropping out`() = runTest {
         blockedApps.value = listOf(app("com.a"), app("com.unused"))
 
         val rows = viewModel().blockedApps.value
 
         assertEquals(2, rows.size)
-        assertEquals(0, rows.single { it.app.packageName == "com.unused" }.usageMinutes)
+        assertNull(rows.single { it.app.packageName == "com.unused" }.usageMinutes)
+    }
+
+    @Test
+    fun `a measured sub-minute total is distinct from unavailable usage`() = runTest {
+        every { usageStatsManager.queryAndAggregateUsageStats(any(), any()) } returns
+            mapOf("com.a" to usage(30_000L))
+        assertEquals(0, viewModel().blockedApps.value.single().usageMinutes)
     }
 
     /** The regression this change was made for: the aggregate is not re-run per emission. */
@@ -123,13 +136,88 @@ class HomeViewModelTest {
 
     /** Usage access is optional, so a refusal must degrade to zeros, not crash the screen. */
     @Test
-    fun `missing usage access yields zero minutes instead of propagating`() = runTest {
+    fun `missing usage access yields unknown minutes instead of propagating`() = runTest {
         every { usageStatsManager.queryAndAggregateUsageStats(any(), any()) } throws
             SecurityException("usage access not granted")
 
         val rows = viewModel().blockedApps.value
 
         assertEquals(1, rows.size)
-        assertEquals(0, rows.first().usageMinutes)
+        assertNull(rows.first().usageMinutes)
+    }
+
+    @Test
+    fun `failed refresh retains complete previous figures and recovers on retry`() = runTest {
+        coEvery { statsRepo.getTodayTotalAttempts() } returns 4
+        coEvery { statsRepo.getTodayDeclined() } returns 2
+        coEvery { statsRepo.getTodayMinutesSaved() } returns 10
+        val vm = viewModel()
+        val feedback = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.feedback.collect { feedback += it } }
+        coEvery { statsRepo.getTodayTotalAttempts() } returns 8
+        coEvery { statsRepo.getTodayDeclined() } throws IllegalStateException("read failed")
+        vm.refreshStats()
+        assertEquals(4, vm.todayAttempts.value)
+        assertEquals(2, vm.todayDeclined.value)
+        assertEquals(10, vm.todayMinutesSaved.value)
+        assertEquals(1, feedback.size)
+        coEvery { statsRepo.getTodayDeclined() } returns 3
+        vm.refreshStats()
+        assertEquals(8, vm.todayAttempts.value)
+        assertEquals(3, vm.todayDeclined.value)
+    }
+
+    @Test
+    fun `overlapping home refreshes share one pending statistics read`() = runTest {
+        val gate = CompletableDeferred<Int>()
+        coEvery { statsRepo.getTodayTotalAttempts() } coAnswers { gate.await() }
+        val vm = viewModel()
+        vm.refreshStats()
+        vm.refreshStats()
+        coVerify(exactly = 1) { statsRepo.getTodayTotalAttempts() }
+        verify(exactly = 1) { usageStatsManager.queryAndAggregateUsageStats(any(), any()) }
+        gate.complete(7)
+        assertEquals(7, vm.todayAttempts.value)
+        vm.refreshStats()
+        coVerify(exactly = 2) { statsRepo.getTodayTotalAttempts() }
+    }
+
+    @Test
+    fun `failed duration change reports feedback and permits retry`() = runTest {
+        coEvery { repo.setPauseSeconds("com.a", 30) } throws IllegalStateException("disk unavailable")
+        val vm = viewModel()
+        val feedback = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.feedback.collect { feedback += it } }
+        vm.setPauseSeconds("com.a", 30)
+        assertEquals(1, feedback.size)
+        assertTrue(vm.savingPackages.value.isEmpty())
+        coEvery { repo.setPauseSeconds("com.a", 30) } returns Unit
+        vm.setPauseSeconds("com.a", 30)
+        coVerify(exactly = 2) { repo.setPauseSeconds("com.a", 30) }
+    }
+
+    @Test
+    fun `pending duration change prevents a competing removal of the same app`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        coEvery { repo.setPauseSeconds("com.a", 30) } coAnswers { gate.await() }
+        coEvery { repo.unblockApp(any()) } returns Unit
+        val vm = viewModel()
+        vm.setPauseSeconds("com.a", 30)
+        vm.removeApp(app("com.a"))
+        assertEquals(setOf("com.a"), vm.savingPackages.value)
+        coVerify(exactly = 0) { repo.unblockApp(any()) }
+        gate.complete(Unit)
+        assertTrue(vm.savingPackages.value.isEmpty())
+        vm.removeApp(app("com.a"))
+        coVerify(exactly = 1) { repo.unblockApp(any()) }
+    }
+
+    @Test
+    fun `failed removal keeps the app visible and releases saving state`() = runTest {
+        coEvery { repo.unblockApp(any()) } throws IllegalStateException("disk unavailable")
+        val vm = viewModel()
+        vm.removeApp(app("com.a"))
+        assertEquals("com.a", vm.blockedApps.value.single().app.packageName)
+        assertTrue(vm.savingPackages.value.isEmpty())
     }
 }

@@ -1,0 +1,65 @@
+package com.dgraciano.breathe.ui.pause
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import com.dgraciano.breathe.data.repository.MentalHealthTip
+import com.dgraciano.breathe.ui.theme.BreatheBackground
+
+/** Uses the real pause UI without granting approval, launching an app, or recording events. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PracticePauseScreen(onBack: () -> Unit) {
+    var selectedReason by rememberSaveable { mutableStateOf<String?>(null) }
+    var outcome by rememberSaveable { mutableStateOf<String?>(null) }
+
+    Scaffold(
+        containerColor = BreatheBackground,
+        topBar = {
+            TopAppBar(
+                title = { Text("Practice pause") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BreatheBackground)
+            )
+        }
+    ) { padding ->
+        androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
+            PauseScreen(
+                appName = "your chosen app",
+                attemptCount = 1,
+                tip = MentalHealthTip(
+                    "A moment to choose",
+                    "Feel your feet on the floor. Take a slow breath. What would you like to do next?",
+                    "ground"
+                ),
+                alternativeActivity = "Look away from your phone and notice your surroundings",
+                selectedReason = selectedReason,
+                pauseSeconds = 8,
+                onReasonSelected = { selectedReason = it },
+                onYes = { outcome = "You chose to continue intentionally." },
+                onNo = { outcome = "You made room for something else." }
+            )
+        }
+    }
+
+    outcome?.let { message ->
+        AlertDialog(
+            onDismissRequest = onBack,
+            title = { Text("That's the pause") },
+            text = {
+                Text("$message Both choices are yours to make. This practice didn't open another app or change your stats.")
+            },
+            confirmButton = {
+                TextButton(onClick = onBack) { Text("Done") }
+            }
+        )
+    }
+}

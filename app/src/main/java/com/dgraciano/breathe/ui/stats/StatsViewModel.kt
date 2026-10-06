@@ -8,6 +8,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 data class StatsUiState(
@@ -20,7 +22,8 @@ data class StatsUiState(
     val weeklyMinutesSaved: Int = 0,
     val lifeWonBackActivity: String = "",
     val topApps: List<AppStat> = emptyList(),
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null
 )
 
 @HiltViewModel
@@ -31,37 +34,47 @@ class StatsViewModel @Inject constructor(
     private val _state = MutableStateFlow(StatsUiState())
     val state: StateFlow<StatsUiState> = _state
 
-    init {
-        loadStats()
-    }
+    private var loadJob: Job? = null
 
     fun loadStats() {
-        viewModelScope.launch {
-            val todayDeclined = statsRepo.getTodayDeclined()
-            val streak = statsRepo.getFocusStreak()
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, errorMessage = null)
+            try {
+                val todayDeclined = statsRepo.getTodayDeclined()
+                val streak = statsRepo.getFocusStreak()
 
-            // Real, per-event minutes recorded at decline time — not an estimate.
-            val savedMinutes = statsRepo.getTodayMinutesSaved()
-            val activity = when {
-                savedMinutes >= 60 -> "read 30 pages of a physical book"
-                savedMinutes >= 30 -> "take a long walk in the park"
-                savedMinutes >= 15 -> "call a friend just to say hello"
-                savedMinutes > 0 -> "practice 5 minutes of deep breathing"
-                else -> ""
+                // Per-event estimates recorded at decline time, rather than multiplying a count.
+                val savedMinutes = statsRepo.getTodayMinutesSaved()
+                val activity = when {
+                    savedMinutes >= 60 -> "read 30 pages of a physical book"
+                    savedMinutes >= 30 -> "take a long walk in the park"
+                    savedMinutes >= 15 -> "call a friend just to say hello"
+                    savedMinutes >= 5 -> "practice 5 minutes of deep breathing"
+                    savedMinutes > 0 -> "take a few slow breaths"
+                    else -> ""
+                }
+
+                _state.value = StatsUiState(
+                    todayAttempts = statsRepo.getTodayTotalAttempts(),
+                    todayDeclined = todayDeclined,
+                    weeklyAttempts = statsRepo.getWeeklyTotalAttempts(),
+                    weeklyDeclined = statsRepo.getWeeklyDeclined(),
+                    focusStreak = streak,
+                    todayMinutesSaved = savedMinutes,
+                    weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
+                    lifeWonBackActivity = activity,
+                    topApps = statsRepo.getTopAppsThisWeek(),
+                    isLoading = false
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    errorMessage = "Couldn't load your insights. Try again."
+                )
             }
-
-            _state.value = StatsUiState(
-                todayAttempts = statsRepo.getTodayTotalAttempts(),
-                todayDeclined = todayDeclined,
-                weeklyAttempts = statsRepo.getWeeklyTotalAttempts(),
-                weeklyDeclined = statsRepo.getWeeklyDeclined(),
-                focusStreak = streak,
-                todayMinutesSaved = savedMinutes,
-                weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
-                lifeWonBackActivity = activity,
-                topApps = statsRepo.getTopAppsThisWeek(),
-                isLoading = false
-            )
         }
     }
 }

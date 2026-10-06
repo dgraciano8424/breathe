@@ -26,11 +26,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.dgraciano.breathe.ui.components.WaveBackground
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.ui.theme.*
 
 @Composable
 fun OnboardingScreen(
     onPermissionsGranted: () -> Unit,
+    onPracticePause: () -> Unit,
+    onBack: (() -> Unit)? = null,
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -39,6 +42,7 @@ fun OnboardingScreen(
     val hasAccessibility by viewModel.hasAccessibility.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     var showDisclosure by remember { mutableStateOf(false) }
+    val reducedMotion = rememberReducedMotion()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -55,7 +59,7 @@ fun OnboardingScreen(
     // Interception needs accessibility plus the overlay. Usage access is optional now —
     // it only enriches the stats screens.
     LaunchedEffect(hasAccessibility, hasOverlay) {
-        if (hasAccessibility && hasOverlay) {
+        if (onBack == null && hasAccessibility && hasOverlay) {
             onPermissionsGranted()
         }
     }
@@ -85,6 +89,8 @@ fun OnboardingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -94,7 +100,7 @@ fun OnboardingScreen(
                 Box(
                     modifier = Modifier
                         .size(100.dp)
-                        .scale(pulse)
+                        .scale(if (reducedMotion) 1f else pulse)
                         .background(BreatheRingOuter, CircleShape)
                 )
                 Box(
@@ -112,19 +118,33 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Digital Sanctuary",
+                text = if (onBack != null) "Settings & permissions" else "Digital Sanctuary",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheTextPrimary
             )
             Text(
-                text = "Let's set up your mindful space.",
+                text = if (onBack != null) "Manage Breathe's access on this device." else "Let's set up your mindful space.",
                 textAlign = TextAlign.Center,
                 fontSize = 15.sp,
                 color = BreatheTextSecondary
             )
 
             Spacer(modifier = Modifier.height(32.dp))
+            if (onBack != null) {
+                OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back to home") }
+            }
+
+            OutlinedButton(onClick = onPracticePause, modifier = Modifier.fillMaxWidth()) {
+                Text(if (onBack != null) "Practice a pause" else "Try a pause before setting up")
+            }
+            Text(
+                "No permissions needed to try. Practice pauses stay out of your stats.",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodySmall,
+                color = BreatheTextSecondary
+            )
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Card titles match the labels shown in system Settings. "Ocean Brush
             // Overlay" gave no clue it meant "Display over other apps", which made the
@@ -133,6 +153,7 @@ fun OnboardingScreen(
                 title = "Accessibility access",
                 description = "Lets Breathe notice the moment you open an app you've chosen to pause.",
                 isGranted = hasAccessibility,
+                allowManage = onBack != null,
                 onClick = { showDisclosure = true }
             )
 
@@ -142,6 +163,7 @@ fun OnboardingScreen(
                 title = "Display over other apps",
                 description = "Lets the pause appear on top of the app you're opening.",
                 isGranted = hasOverlay,
+                allowManage = onBack != null,
                 onClick = {
                     val intent = Intent(
                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -157,6 +179,7 @@ fun OnboardingScreen(
                 title = "Usage access (optional)",
                 description = "Adds how long you've spent in each app to your stats.",
                 isGranted = hasUsage,
+                allowManage = onBack != null,
                 onClick = {
                     context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                 }
@@ -164,14 +187,14 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            if (hasAccessibility && hasOverlay) {
+            if (onBack == null) {
                 Button(
                     onClick = { onPermissionsGranted() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BreatheSecondary)
                 ) {
-                    Text("Enter the Sanctuary", fontWeight = FontWeight.Bold)
+                    Text("Go to home", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -287,6 +310,7 @@ fun PermissionCard(
     title: String,
     description: String,
     isGranted: Boolean,
+    allowManage: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
@@ -307,7 +331,7 @@ fun PermissionCard(
             Spacer(modifier = Modifier.width(16.dp))
             Button(
                 onClick = onClick,
-                enabled = !isGranted,
+                enabled = !isGranted || allowManage,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = BreathePrimary,
@@ -315,7 +339,7 @@ fun PermissionCard(
                 ),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Text(if (isGranted) "OK ✓" else "Grant", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(if (isGranted && allowManage) "Manage" else if (isGranted) "OK ✓" else "Grant", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
