@@ -16,6 +16,16 @@ import com.dgraciano.breathe.ui.theme.BreatheBackground
 fun PracticePauseScreen(onBack: () -> Unit) {
     var selectedReason by rememberSaveable { mutableStateOf<String?>(null) }
     var outcome by rememberSaveable { mutableStateOf<String?>(null) }
+    var leaving by remember { mutableStateOf(false) }
+    // Navigation keeps the outgoing screen composed during its transition. Close the
+    // dialog first and accept only one exit, so a second tap cannot pop its parent too.
+    val finishPractice = {
+        if (!leaving) {
+            leaving = true
+            outcome = null
+            onBack()
+        }
+    }
 
     Scaffold(
         containerColor = BreatheBackground,
@@ -23,7 +33,7 @@ fun PracticePauseScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("Practice pause") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = finishPractice) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -52,13 +62,13 @@ fun PracticePauseScreen(onBack: () -> Unit) {
 
     outcome?.let { message ->
         AlertDialog(
-            onDismissRequest = onBack,
+            onDismissRequest = finishPractice,
             title = { Text("That's the pause") },
             text = {
                 Text("$message Both choices are yours to make. This practice didn't open another app or change your stats.")
             },
             confirmButton = {
-                TextButton(onClick = onBack) { Text("Done") }
+                TextButton(onClick = finishPractice) { Text("Done") }
             }
         )
     }

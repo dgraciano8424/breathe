@@ -37,12 +37,12 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val reducedMotion = rememberReducedMotion()
     val hasUsage by viewModel.hasUsagePermission.collectAsState()
     val hasOverlay by viewModel.hasOverlayPermission.collectAsState()
     val hasAccessibility by viewModel.hasAccessibility.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     var showDisclosure by remember { mutableStateOf(false) }
-    val reducedMotion = rememberReducedMotion()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -74,14 +74,17 @@ fun OnboardingScreen(
         )
     }
 
-    val transition = rememberInfiniteTransition(label = "onboard")
-    val pulse by transition.animateFloat(
-        initialValue = 0.8f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "pulse"
-    )
+    val pulse = if (reducedMotion) 1f else {
+        val transition = rememberInfiniteTransition(label = "onboard")
+        val animatedPulse by transition.animateFloat(
+            initialValue = 0.8f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(3000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ), label = "pulse"
+        )
+        animatedPulse
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
         WaveBackground(modifier = Modifier.fillMaxSize())
@@ -118,13 +121,13 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = if (onBack != null) "Settings & permissions" else "Digital Sanctuary",
+                text = if (onBack != null) "Settings & permissions" else "Welcome to Breathe",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheTextPrimary
             )
             Text(
-                text = if (onBack != null) "Manage Breathe's access on this device." else "Let's set up your mindful space.",
+                text = if (onBack != null) "Manage Breathe's access on this device." else "Choose a small pause before the apps that pull you in.",
                 textAlign = TextAlign.Center,
                 fontSize = 15.sp,
                 color = BreatheTextSecondary
@@ -234,14 +237,14 @@ private fun AccessibilityDisclosureDialog(
                 Text(
                     "Breathe uses Android's accessibility service to detect which app has " +
                         "just come to the front. That is the only way to show your pause " +
-                        "before the app opens.",
+                        "when the app comes to the foreground.",
                     color = BreatheTextSecondary,
                     fontSize = 14.sp
                 )
                 Text(
                     "It reads only the name of the app being opened. It does not read the " +
                         "contents of your screen, your messages, or anything you type, and " +
-                        "it never performs actions on your behalf.",
+                        "it only opens your home screen when you choose Go back.",
                     color = BreatheTextSecondary,
                     fontSize = 14.sp
                 )

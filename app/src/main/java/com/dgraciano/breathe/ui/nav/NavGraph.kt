@@ -48,20 +48,16 @@ fun BreatheNavGraph() {
         navController = nav,
         startDestination = startDest,
         enterTransition = {
-            if (reducedMotion) EnterTransition.None else
-                fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { it / 10 }
+            if (reducedMotion) EnterTransition.None else fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { it / 20 }
         },
         exitTransition = {
-            if (reducedMotion) ExitTransition.None else
-                fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { -it / 10 }
+            if (reducedMotion) ExitTransition.None else fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { -it / 20 }
         },
         popEnterTransition = {
-            if (reducedMotion) EnterTransition.None else
-                fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { -it / 10 }
+            if (reducedMotion) EnterTransition.None else fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { -it / 20 }
         },
         popExitTransition = {
-            if (reducedMotion) ExitTransition.None else
-                fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { it / 10 }
+            if (reducedMotion) ExitTransition.None else fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { it / 20 }
         }
     ) {
         composable(Routes.ONBOARDING) {

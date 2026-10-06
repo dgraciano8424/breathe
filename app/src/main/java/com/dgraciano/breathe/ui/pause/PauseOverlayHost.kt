@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -33,9 +34,11 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.data.repository.PausePreferences
 import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
+import com.dgraciano.breathe.service.MonitoringStatus
 import com.dgraciano.breathe.ui.theme.BreatheTheme
 import android.content.pm.ApplicationInfo
 import com.dgraciano.breathe.widget.WidgetRefresher
@@ -51,14 +54,18 @@ private const val TAG = "PauseOverlay"
 private fun PauseOverlayContent(
     appName: String,
     viewModel: PauseViewModel,
+    preferences: PausePreferences,
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
     val attemptCount by viewModel.attemptCount.collectAsState()
     val selectedReason by viewModel.selectedReason.collectAsState()
+    val reminder by preferences.reminder.collectAsState()
     val tip by viewModel.tip.collectAsState()
     val activity by viewModel.alternativeActivity.collectAsState()
     val pauseSeconds by viewModel.pauseSeconds.collectAsState()
+    val sessionId by viewModel.sessionId.collectAsState()
+    val ready by viewModel.ready.collectAsState()
 
     PauseScreen(
         appName = appName,
@@ -66,7 +73,10 @@ private fun PauseOverlayContent(
         tip = tip,
         alternativeActivity = activity,
         selectedReason = selectedReason,
+        personalReminder = reminder,
         pauseSeconds = pauseSeconds,
+        sessionId = sessionId,
+        ready = ready,
         onReasonSelected = viewModel::selectReason,
         onYes = onYes,
         onNo = onNo
@@ -95,6 +105,8 @@ class PauseOverlayHost @Inject constructor(
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
     private val widgetRefresher: WidgetRefresher,
+    private val monitoringStatus: MonitoringStatus,
+    private val pausePreferences: PausePreferences,
     @ApplicationScope private val appScope: CoroutineScope
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -112,16 +124,21 @@ class PauseOverlayHost @Inject constructor(
     @Volatile
     var isShowing: Boolean = false
         private set
+    @Volatile
+    var activePackage: String? = null
+        private set
 
     fun canShow(): Boolean = Settings.canDrawOverlays(context)
 
     /** Safe to call from any thread; window work is posted to the main looper. */
     fun show(packageName: String, appName: String) {
+        activePackage = packageName
         isShowing = true
         mainHandler.post { showInternal(packageName, appName) }
     }
 
     fun hide() {
+        activePackage = null
         isShowing = false
         mainHandler.post { hideInternal() }
     }
@@ -150,6 +167,7 @@ class PauseOverlayHost @Inject constructor(
         viewModel.init(packageName, appName)
 
         val composeView = ComposeView(context).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setViewTreeLifecycleOwner(overlayOwners)
             setViewTreeViewModelStoreOwner(overlayOwners)
             setViewTreeSavedStateRegistryOwner(overlayOwners)
@@ -158,6 +176,7 @@ class PauseOverlayHost @Inject constructor(
                     PauseOverlayContent(
                         appName = appName,
                         viewModel = viewModel,
+                        preferences = pausePreferences,
                         onYes = {
                             viewModel.recordOpened()
                             // The blocked app is still in the foreground behind us.
@@ -174,19 +193,21 @@ class PauseOverlayHost @Inject constructor(
         }
 
         // A plain ComposeView cannot intercept the back key, so it is wrapped in a
-        // container that can. Back dismisses without recording, matching what the
-        // Activity did; the monitor re-intervenes after its debounce.
+        // container that can. Back means the same choice as the Go back button;
+        // merely hiding the overlay would expose the app without approval.
         val container = object : FrameLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    viewModel.recordDeclined()
                     hide()
+                    goHome()
                     return true
                 }
                 return super.dispatchKeyEvent(event)
             }
         }.apply {
-            // Compose installs its window recomposer on the window's root view.
-            // Owners on the child ComposeView alone do not reach this container.
+            // Compose installs the window recomposer on the window root, not only
+            // the ComposeView child. The root must expose these owners too.
             setViewTreeLifecycleOwner(overlayOwners)
             setViewTreeViewModelStoreOwner(overlayOwners)
             setViewTreeSavedStateRegistryOwner(overlayOwners)
@@ -206,18 +227,21 @@ class PauseOverlayHost @Inject constructor(
 
         try {
             windowManager.addView(container, layoutParams())
-        } catch (e: WindowManager.BadTokenException) {
+        } catch (e: RuntimeException) {
             // Overlay permission can be revoked between the check and the add.
             Log.w(TAG, "Overlay rejected; falling back to the pause activity", e)
             overlayOwners.destroy()
             isShowing = false
-            launchPauseActivity(packageName)
+            activePackage = null
+            monitoringStatus.failed()
+            runCatching { launchPauseActivity(packageName) }
+                .onFailure { Log.w(TAG, "Pause activity also unavailable", it) }
             return
         }
 
         root = container
         owners = overlayOwners
-        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "Pause overlay attached")
+        monitoringStatus.pauseShown()
     }
 
     private fun hideInternal() {

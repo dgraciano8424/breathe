@@ -1,12 +1,15 @@
 package com.dgraciano.breathe.ui.pause
 
+import android.os.SystemClock
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -27,21 +30,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.dgraciano.breathe.data.model.InterventionEvent
+import androidx.compose.ui.semantics.Role
+import com.dgraciano.breathe.data.model.pauseReasons
 import com.dgraciano.breathe.data.repository.MentalHealthTip
-import com.dgraciano.breathe.ui.components.ConfettiOverlay
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.ui.theme.*
 import kotlinx.coroutines.delay
 
-private val reasons = listOf(
-    InterventionEvent.REASON_BORED to "Bored",
-    InterventionEvent.REASON_HABIT to "Habit",
-    InterventionEvent.REASON_ESCAPING to "Escaping",
-    InterventionEvent.REASON_CURIOUS to "Curious"
-)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PauseScreen(
     appName: String,
@@ -49,65 +47,36 @@ fun PauseScreen(
     tip: MentalHealthTip,
     alternativeActivity: String,
     selectedReason: String?,
+    personalReminder: String = "",
     pauseSeconds: Int,
+    sessionId: Int = 0,
+    ready: Boolean = true,
     onReasonSelected: (String) -> Unit,
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
     val showContent = true
-    var showConfetti by remember { mutableStateOf(false) }
+    var showReasons by remember(sessionId) { mutableStateOf(false) }
+    var showTip by remember(sessionId) { mutableStateOf(false) }
     val reducedMotion = rememberReducedMotion()
 
     // The whole point of the pause: the way out of the app stays shut until the user
     // has actually sat with the breathing for as long as they configured.
-    var secondsLeft by remember(pauseSeconds) { mutableIntStateOf(pauseSeconds) }
-    LaunchedEffect(pauseSeconds) {
-        secondsLeft = pauseSeconds
+    val deadline = remember(sessionId, pauseSeconds, ready) { SystemClock.elapsedRealtime() + pauseSeconds * 1000L }
+    var secondsLeft by remember(sessionId, pauseSeconds, ready) { mutableIntStateOf(pauseSeconds) }
+    LaunchedEffect(sessionId, deadline, ready) {
+        if (!ready) return@LaunchedEffect
         while (secondsLeft > 0) {
-            delay(1000)
-            secondsLeft--
+            delay(100)
+            secondsLeft = ((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0) + 999).div(1000).toInt()
         }
     }
 
-    LaunchedEffect(showConfetti) {
-        if (showConfetti) {
-            delay(850)
-            onNo()
-        }
-    }
-
-    val transition = rememberInfiniteTransition(label = "breathe")
-
-    val animatedBreathScale by transition.animateFloat(
-        initialValue = 0.7f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "scale"
-    )
-
-    val animatedBreathAlpha by transition.animateFloat(
-        initialValue = 0.4f, targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "alpha"
-    )
-
-    val animatedPhase by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ), label = "phase"
-    )
-
-    // With motion off the rings hold still, and the breath cue is driven by the
-    // countdown instead so the guidance still alternates.
-    val breathScale = if (reducedMotion) 0.9f else animatedBreathScale
-    val breathAlpha = if (reducedMotion) 0.6f else animatedBreathAlpha
-    val isInhale = if (reducedMotion) (secondsLeft / 4) % 2 == 0 else animatedPhase < 0.5f
-    val breathLabel = if (isInhale) "Inhale deep sea air..." else "Exhale the tide..."
+    val motion = if (reducedMotion) BreathMotion(0.9f, 0.6f, 0f) else animatedBreathMotion()
+    val breathScale = motion.scale
+    val breathAlpha = motion.alpha
+    val isInhale = if (reducedMotion) (secondsLeft / 4) % 2 == 0 else motion.phase < 0.5f
+    val breathLabel = if (isInhale) "Breathe in gently" else "Breathe out slowly"
 
     Box(
         modifier = Modifier
@@ -187,9 +156,11 @@ fun PauseScreen(
                     )
                 }
 
-                // Mental Health Tip
+                TextButton(onClick = { showTip = !showTip }) {
+                    Text(if (showTip) "Hide grounding tip" else "Want a grounding tip?", color = BreatheTextSecondary)
+                }
                 AnimatedVisibility(
-                    visible = showContent,
+                    visible = showContent && showTip,
                     enter = fadeIn(tween(1000)) + scaleIn(initialScale = 0.9f)
                 ) {
                     Card(
@@ -224,34 +195,55 @@ fun PauseScreen(
                     }
                 }
 
+                if (personalReminder.isNotBlank()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = BreatheSurface.copy(alpha = 0.7f))
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Your reminder", color = BreatheSecondary, fontSize = 12.sp)
+                            Text(personalReminder, color = BreatheTextPrimary, fontSize = 16.sp)
+                        }
+                    }
+                }
+                TextButton(onClick = { showReasons = !showReasons }) {
+                    Text(
+                        if (showReasons) "Hide intentions" else selectedReason?.let { key ->
+                            "Your intention: ${pauseReasons.firstOrNull { it.key == key }?.label.orEmpty()}"
+                        } ?: "Add an intention (optional)",
+                        color = BreatheTextSecondary
+                    )
+                }
+
                 // Reason Selector
-                AnimatedVisibility(visible = showContent, enter = fadeIn(tween(1200))) {
+                AnimatedVisibility(visible = showContent && showReasons, enter = fadeIn(tween(1200))) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Why reach for $appName?",
+                            text = "What brings you to $appName? Tap again to clear.",
                             fontSize = 13.sp,
                             color = BreatheTextMuted,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
-                        Row(
+                        FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().selectableGroup()
                         ) {
-                            reasons.forEach { (key, label) ->
+                            pauseReasons.forEach { (key, label) ->
                                 val isSelected = selectedReason == key
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
-                                        .weight(1f)
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(if (isSelected) BreathePrimary.copy(alpha = 0.2f) else Color.Transparent)
                                         .border(1.dp, if (isSelected) BreathePrimary else BreatheDivider, RoundedCornerShape(12.dp))
-                                        .clickable { onReasonSelected(key) }
-                                        .padding(vertical = 8.dp)
+                                        .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onReasonSelected(key) })
+                                        .defaultMinSize(minHeight = 48.dp)
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
                                     Text(
                                         text = label,
-                                        fontSize = 11.sp,
+                                        fontSize = 13.sp,
                                         color = if (isSelected) BreathePrimary else BreatheTextSecondary,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
@@ -264,21 +256,22 @@ fun PauseScreen(
                 // Actions
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = { showConfetti = true },
-                        enabled = !showConfetti,
+                        onClick = onNo,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(28.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BreathePrimary, contentColor = BreatheOnPrimary)
                     ) {
-                        Text("I'll do something else", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Go back", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                     TextButton(
                         onClick = onYes,
-                        enabled = secondsLeft <= 0 && !showConfetti,
+                        enabled = ready && secondsLeft <= 0,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = if (secondsLeft > 0) {
+                            text = if (!ready) {
+                                "Preparing your pause…"
+                            } else if (secondsLeft > 0) {
                                 "Continue to $appName in ${secondsLeft}s"
                             } else {
                                 "Continue to $appName"
@@ -292,28 +285,44 @@ fun PauseScreen(
             }
         }
         
-        if (showConfetti) {
-            ConfettiOverlay(modifier = Modifier.fillMaxSize())
-        }
-
-        // Final "Wave Brush" that clears the screen
-        if (!showContent) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color.Transparent, BreathePrimary.copy(alpha = 0.3f), BreatheBackground),
-                        )
-                    )
-            )
-        }
     }
 }
 
 private fun attemptCountLabel(count: Int): String = when (count) {
     1 -> "A fresh start today"
     2 -> "Your 2nd visit today"
-    3 -> "3rd time's a charm?"
+    3 -> "Your 3rd visit today"
     else -> "Visit #$count today"
+}
+
+private data class BreathMotion(val scale: Float, val alpha: Float, val phase: Float)
+@Composable
+private fun animatedBreathMotion(): BreathMotion {
+    val transition = rememberInfiniteTransition(label = "breathe")
+
+    val animatedBreathScale by transition.animateFloat(
+        initialValue = 0.7f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "scale"
+    )
+
+    val animatedBreathAlpha by transition.animateFloat(
+        initialValue = 0.4f, targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "alpha"
+    )
+
+    val animatedPhase by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "phase"
+    )
+
+    return BreathMotion(animatedBreathScale, animatedBreathAlpha, animatedPhase)
 }

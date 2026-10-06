@@ -151,3 +151,35 @@ Device, screenshot, TalkBack, and release behavior remain unverified.
 - assembleDebug, 74 unit tests, and lintDebug passed with one worker and a 768 MB Java heap. Screenshot outputs/phone-verification/settings.png captures the installed Settings page.
 - Found the user's actual Chrome extension in Documents/Codex/2026-10-05/i-wa/work/breathe-chrome (v0.6.1), with installed unpacked output under that task's outputs/breathe-chrome/unpacked. It differs from the StudioProjects v0.1.0 checkout. Future work on the user's installed extension should use the v0.6.1 source and preserve its additional features.
 
+
+## Combined quality pass — October 6, 2026
+
+The joint branch combines the physical-overlay investigation and navigation polish with the prior reliability/control review branch. It retains practice mode, optional-usage handling, picker/save retry, home/insight/journey recovery, Monday/local-midnight boundaries, and adds the existing tested visit tracking, monitoring diagnostics, snooze, personal reminders, optional intentions, day/choice milestones and history export/clear controls.
+
+The pause is visible immediately rather than relying on an entrance animation. Its root exposes Compose owners, resumes after attachment, and disposes composition with the overlay lifecycle. A failed attempt-count read retains the chosen app's duration; pause initialization and choices are guarded against stale loads and duplicate events. Insight refreshes coalesce and retain prior successful data on failure.
+
+Room now exports the unchanged v5 schema. `scripts/check_migrations.py` executes the production migration SQL against populated SQLite fixtures for versions 1 through 5 and checks the resulting columns and retained records against the exported schema. This is SQL validation, not a device Room-upgrade claim. Both existing DAO verification scripts pass.
+
+Current build checks: 111 JVM tests pass with zero failures/errors/skips; debug lint has zero errors and 48 warnings. Debug and R8/resource-shrunk unsigned release builds pass. The release APK is 1,129,264 bytes. A copy is signed with the Android debug test key solely for emulator verification; production signing remains outstanding.
+
+Phone verification remains open: the previously connected Samsung is no longer available through ADB. The user is away and will reconnect later; emulator evidence does not replace Samsung acceptance.
+
+### Emulator evidence
+
+A temporary read-only Pixel 10 AVD (API 37.1, serial emulator-5580) runs with networking disabled. Only this disposable instance receives test grants/data; the saved AVD and physical phone are untouched.
+
+- Actual Room v4-to-v5 opening retained two synthetic historical choices and a selected app's 5-second duration, and removed the quote table. The SQL script separately covers populated versions 1–5.
+- Selected Clock through the actual picker, saved its 5-second duration through Home, and confirmed the live overlay is opaque and usable. An early Continue tap left counts unchanged; Continue after the countdown and immediate Go back/Android Back each recorded exactly one choice. Home departure and screen sleep/unlock started fresh pauses.
+- Approval survived notification-shade expansion/collapse and the Clock city-search keyboard. Snooze allowed Clock through without adding choices; Resume now restored a fresh pause.
+- A saved personal reminder appeared in the overlay. At 150% font scale, its actions remained accessible; landscape content scrolled to the actions. With animator scale zero, sampled content pixels across screenshots two seconds apart were identical after countdown completion.
+- Export through Android's native save picker produced eight synthetic CSV rows matching three Continue and five Go back choices. The reminder was excluded. Confirmed Clear history removed all events while retaining both monitored apps and their durations.
+- Practice completion uses a single exit and closes its dialog before navigation; repeated Done taps returned to setup without losing the parent screen, and practice did not change history. Transparent screen containers inherit the theme foreground for readable unstyled/recovery text. Activity system bars explicitly use light icons over the dark palette; one-choice labels use the singular form.
+- Android Settings itself suppresses non-system overlays on this emulator. Window diagnostics confirmed the OS force-hiding the window. Visible overlay tests therefore use Clock; protected system/banking/permission screens can restrict overlays. Monitoring Details explains this limit and reports a created pause rather than claiming an OS-hidden window was visible.
+
+### Extension evidence
+
+The active extension checkout is the Documents/Codex v0.6 branch, not the old StudioProjects v0.1 checkout. Version 0.6.2 passes 26 unit tests, strict TypeScript, 32 production-build Chromium workflows, and ZIP packaging. Fixed and regression-tested failed choice-navigation counts/rollback, revoked-access countdown recovery, failed permission toggles, stale failed settings reads, keyboard focus, and 320 CSS-pixel light/dark layouts. The installed unpacked directory matches the tested 18 files by SHA-256 and the previous directory is backed up. Chrome still needs a reload, followed by native prompt/toolbar/restart/media compatibility checks.
+
+The native launcher widget was added through the Pixel widget picker. It displayed zero after clearing history, updated to one Go back choice after a real overlay decision, opened Breathe when tapped, and returned to zero after a later confirmed clear. Repeat placement/update on the user's Samsung remains open.
+
+Final `testDebugUnitTest lintDebug assembleDebug assembleRelease bundleRelease` passed. The optimized APK was signed only with the Android debug test key, verified with apksigner, and installed over debug data on the same temporary emulator. Package flags confirm debuggable is off. The live overlay retained its reminder and chosen 5-second duration; Go back and Continue each produced exactly one choice, reflected in the native widget. Native Insights showed the correct singular one-choice label. No app crash appeared in the captured test log. The release APK and AAB remain unsigned for production distribution. Artifacts, SHA-256 hashes and a machine-readable results record are saved in outputs/quality-verification/. Samsung/vendor behavior, API 26–28 onboarding, fallback Activity behavior, widget placement on Samsung, and production upload signing remain release gates.

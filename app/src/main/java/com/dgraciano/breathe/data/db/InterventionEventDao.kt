@@ -3,13 +3,26 @@ package com.dgraciano.breathe.data.db
 import androidx.room.*
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.data.model.InterventionEvent
+import com.dgraciano.breathe.data.model.ProgressTotals
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface InterventionEventDao {
 
+    @Query("""
+        SELECT COUNT(*) AS choices,
+            COUNT(DISTINCT date(timestamp / 1000, 'unixepoch', 'localtime')) AS activeDays,
+            COALESCE(SUM(CASE WHEN outcome = 'DECLINED' THEN 1 ELSE 0 END), 0) AS declined,
+            COALESCE(SUM(CASE WHEN outcome = 'DECLINED' THEN minutesSaved ELSE 0 END), 0) AS estimatedMinutes
+        FROM intervention_events WHERE outcome IN ('OPENED', 'DECLINED')
+    """)
+    suspend fun getProgressTotals(): ProgressTotals
+
     @Insert
     suspend fun insert(event: InterventionEvent)
+
+    @Query("DELETE FROM intervention_events")
+    suspend fun clearHistory()
 
     @Query("SELECT COUNT(*) FROM intervention_events WHERE packageName = :pkg AND timestamp >= :since")
     suspend fun getAttemptCount(pkg: String, since: Long): Int

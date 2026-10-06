@@ -6,11 +6,15 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="sharedpref" path="breathe_snooze.xml" />
+        <exclude domain="sharedpref" path="breathe_pause_preferences.xml" />
         <exclude domain="database" path="breathe.db" />
         <exclude domain="database" path="breathe.db-shm" />
         <exclude domain="database" path="breathe.db-wal" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="sharedpref" path="breathe_snooze.xml" />
+        <exclude domain="sharedpref" path="breathe_pause_preferences.xml" />
         <exclude domain="database" path="breathe.db" />
         <exclude domain="database" path="breathe.db-shm" />
         <exclude domain="database" path="breathe.db-wal" />

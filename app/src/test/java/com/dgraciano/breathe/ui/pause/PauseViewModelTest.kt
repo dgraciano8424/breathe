@@ -105,6 +105,24 @@ class PauseViewModelTest {
     }
 
     @Test
+    fun `failed attempt count retains the configured duration and releases setup`() = runTest {
+        coEvery { appRepo.getPauseSeconds("com.slow") } returns 60
+        coEvery { statsRepo.getTodayAttemptCount(any()) } throws IllegalStateException("unavailable")
+        viewModel.init("com.slow", "Slow App")
+        assertEquals(60, viewModel.pauseSeconds.value)
+        assertEquals(1, viewModel.attemptCount.value)
+        org.junit.Assert.assertTrue(viewModel.ready.value)
+    }
+
+    @Test
+    fun `failed duration read falls back without crashing setup`() = runTest {
+        coEvery { appRepo.getPauseSeconds(any()) } throws IllegalStateException("unavailable")
+        viewModel.init("com.example", "Example App")
+        assertEquals(BlockedApp.DEFAULT_PAUSE_SECONDS, viewModel.pauseSeconds.value)
+        org.junit.Assert.assertTrue(viewModel.ready.value)
+    }
+
+    @Test
     fun `selectReason sets the selected reason`() {
         viewModel.selectReason(InterventionEvent.REASON_BORED)
         assertEquals(InterventionEvent.REASON_BORED, viewModel.selectedReason.value)
@@ -167,7 +185,7 @@ class PauseViewModelTest {
     }
 
     @Test
-    fun `recordDeclined then recordOpened both use the correct package`() = runTest {
+    fun `repeated conflicting choices record only the first choice`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
         val events = mutableListOf<InterventionEvent>()
         coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
@@ -176,11 +194,10 @@ class PauseViewModelTest {
         viewModel.recordDeclined()
         viewModel.recordOpened()
 
-        assertEquals(2, events.size)
+        assertEquals(1, events.size)
         assertEquals("com.target.app", events[0].packageName)
-        assertEquals("com.target.app", events[1].packageName)
         assertEquals(InterventionEvent.OUTCOME_DECLINED, events[0].outcome)
-        assertEquals(InterventionEvent.OUTCOME_OPENED, events[1].outcome)
+        verify(exactly = 0) { sessionApprovalStore.approve(any()) }
     }
 
     @Test
@@ -268,7 +285,7 @@ class PauseViewModelTest {
         viewModel.recordDeclined()
         viewModel.recordOpened()
 
-        coVerify(exactly = 2) { statsRepo.recordEvent(any()) }
+        coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
     }
 
     @Test
@@ -286,4 +303,62 @@ class PauseViewModelTest {
             assertEquals("com.first", events.single().packageName)
             assertEquals("First App", events.single().appName)
         }
+
+    @Test
+    fun `a new pause clears its reason and permits a new choice`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        val events = mutableListOf<InterventionEvent>()
+        coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
+        viewModel.init("com.first", "First")
+        val firstId = viewModel.sessionId.value
+        viewModel.selectReason(InterventionEvent.REASON_BORED)
+        viewModel.recordDeclined()
+        viewModel.init("com.second", "Second")
+        assertNull(viewModel.selectedReason.value)
+        assertEquals(firstId + 1, viewModel.sessionId.value)
+        viewModel.recordOpened()
+        assertEquals(listOf("com.first", "com.second"), events.map { it.packageName })
+        assertNull(events[1].reason)
+    }
+
+    @Test
+    fun `late initialization for the previous app cannot overwrite a new pause`() = runTest {
+        val waiting = kotlinx.coroutines.CompletableDeferred<Int>()
+        coEvery { appRepo.getPauseSeconds("com.first") } coAnswers {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { waiting.await() }
+        }
+        coEvery { appRepo.getPauseSeconds("com.second") } returns 5
+        coEvery { statsRepo.getTodayAttemptCount("com.first") } returns 90
+        coEvery { statsRepo.getTodayAttemptCount("com.second") } returns 2
+        viewModel.init("com.first", "First")
+        assertEquals(false, viewModel.ready.value)
+        viewModel.init("com.second", "Second")
+        waiting.complete(60)
+        assertEquals(5, viewModel.pauseSeconds.value)
+        assertEquals(3, viewModel.attemptCount.value)
+        assertEquals(true, viewModel.ready.value)
+    }
+
+    @Test
+    fun `legitimate intentions remain optional and reset for a new pause`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { statsRepo.recordEvent(any()) } returns Unit
+        viewModel.init("com.example", "Example")
+        viewModel.selectReason("WORK")
+        viewModel.recordOpened()
+        coVerify { statsRepo.recordEvent(match { it.reason == "WORK" && it.outcome == InterventionEvent.OUTCOME_OPENED }) }
+        viewModel.init("com.other", "Other")
+        assertNull(viewModel.selectedReason.value)
+        viewModel.selectReason("RELAX")
+        assertEquals("RELAX", viewModel.selectedReason.value)
+        viewModel.selectReason("RELAX")
+        assertNull(viewModel.selectedReason.value)
+    }
+
+    @Test
+    fun `unknown reasons cannot replace an explicit intention`() = runTest {
+        viewModel.selectReason("LEARN")
+        viewModel.selectReason("unexpected")
+        assertEquals("LEARN", viewModel.selectedReason.value)
+    }
 }

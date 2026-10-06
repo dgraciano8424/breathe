@@ -1,26 +1,29 @@
 package com.dgraciano.breathe.ui.stats
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.AppStat
+import com.dgraciano.breathe.data.model.writeHistoryCsv
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.di.IoDispatcher
+import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class StatsUiState(
-    val todayAttempts: Int = 0,
-    val todayDeclined: Int = 0,
-    val weeklyAttempts: Int = 0,
-    val weeklyDeclined: Int = 0,
-    val focusStreak: Int = 0,
-    val todayMinutesSaved: Int = 0,
-    val weeklyMinutesSaved: Int = 0,
-    val lifeWonBackActivity: String = "",
+    val todayAttempts: Int = 0, val todayDeclined: Int = 0,
+    val weeklyAttempts: Int = 0, val weeklyDeclined: Int = 0,
+    val todayMinutesSaved: Int = 0, val weeklyMinutesSaved: Int = 0,
     val topApps: List<AppStat> = emptyList(),
     val isLoading: Boolean = true,
     val errorMessage: String? = null
@@ -28,53 +31,76 @@ data class StatsUiState(
 
 @HiltViewModel
 class StatsViewModel @Inject constructor(
-    private val statsRepo: StatsRepository
+    private val statsRepo: StatsRepository,
+    private val widgetRefresher: WidgetRefresher,
+    @ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
-
-    private val _state = MutableStateFlow(StatsUiState())
-    val state: StateFlow<StatsUiState> = _state
-
+    private val mutableState = MutableStateFlow(StatsUiState())
+    val state: StateFlow<StatsUiState> = mutableState
+    private val mutableNotice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = mutableNotice
+    private val mutableWorking = MutableStateFlow(false)
+    val working: StateFlow<Boolean> = mutableWorking
     private var loadJob: Job? = null
 
+    private suspend fun readStats() = StatsUiState(
+        todayAttempts = statsRepo.getTodayTotalAttempts(), todayDeclined = statsRepo.getTodayDeclined(),
+        weeklyAttempts = statsRepo.getWeeklyTotalAttempts(), weeklyDeclined = statsRepo.getWeeklyDeclined(),
+        todayMinutesSaved = statsRepo.getTodayMinutesSaved(), weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
+        topApps = statsRepo.getTopAppsThisWeek(), isLoading = false
+    )
+
     fun loadStats() {
-        if (loadJob?.isActive == true) return
+        if (mutableWorking.value || loadJob?.isActive == true) return
         loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, errorMessage = null)
-            try {
-                val todayDeclined = statsRepo.getTodayDeclined()
-                val streak = statsRepo.getFocusStreak()
-
-                // Per-event estimates recorded at decline time, rather than multiplying a count.
-                val savedMinutes = statsRepo.getTodayMinutesSaved()
-                val activity = when {
-                    savedMinutes >= 60 -> "read 30 pages of a physical book"
-                    savedMinutes >= 30 -> "take a long walk in the park"
-                    savedMinutes >= 15 -> "call a friend just to say hello"
-                    savedMinutes >= 5 -> "practice 5 minutes of deep breathing"
-                    savedMinutes > 0 -> "take a few slow breaths"
-                    else -> ""
-                }
-
-                _state.value = StatsUiState(
-                    todayAttempts = statsRepo.getTodayTotalAttempts(),
-                    todayDeclined = todayDeclined,
-                    weeklyAttempts = statsRepo.getWeeklyTotalAttempts(),
-                    weeklyDeclined = statsRepo.getWeeklyDeclined(),
-                    focusStreak = streak,
-                    todayMinutesSaved = savedMinutes,
-                    weeklyMinutesSaved = statsRepo.getWeeklyMinutesSaved(),
-                    lifeWonBackActivity = activity,
-                    topApps = statsRepo.getTopAppsThisWeek(),
-                    isLoading = false
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _state.value = _state.value.copy(
+            mutableState.value = mutableState.value.copy(isLoading = true, errorMessage = null)
+            try { mutableState.value = readStats() }
+            catch (error: CancellationException) { throw error }
+            catch (_: Exception) {
+                mutableState.value = mutableState.value.copy(
                     isLoading = false,
                     errorMessage = "Couldn't load your insights. Try again."
                 )
             }
+        }
+    }
+
+    fun exportHistory(destination: Uri) {
+        if (mutableWorking.value) return
+        mutableWorking.value = true
+        mutableNotice.value = null
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) {
+                    val history = statsRepo.getHistory()
+                    val stream = context.contentResolver.openOutputStream(destination, "wt") ?: error("Destination unavailable")
+                    stream.bufferedWriter(Charsets.UTF_8).use { writeHistoryCsv(history, it) }
+                }
+                mutableNotice.value = "History exported. Your history is still saved in Breathe."
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { mutableNotice.value = "The export could not finish. Try another destination. An incomplete file may remain." }
+            finally { mutableWorking.value = false }
+        }
+    }
+
+    fun clearHistory() {
+        if (mutableWorking.value) return
+        mutableWorking.value = true
+        mutableNotice.value = null
+        loadJob?.cancel()
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) { statsRepo.clearHistory() }
+                mutableState.value = StatsUiState(isLoading = false)
+                runCatching { widgetRefresher.refresh() }
+                mutableNotice.value = "History cleared. Your monitored apps are unchanged."
+                try { mutableState.value = readStats() }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { mutableNotice.value = "History cleared. Reopen this screen to refresh new choices." }
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { mutableNotice.value = "History could not be cleared. Try again." }
+            finally { mutableWorking.value = false }
         }
     }
 }

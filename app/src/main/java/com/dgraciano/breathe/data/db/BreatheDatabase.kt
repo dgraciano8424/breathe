@@ -10,7 +10,7 @@ import com.dgraciano.breathe.data.model.InterventionEvent
 @Database(
     entities = [BlockedApp::class, InterventionEvent::class],
     version = 5,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class BreatheDatabase : RoomDatabase() {
     abstract fun blockedAppDao(): BlockedAppDao

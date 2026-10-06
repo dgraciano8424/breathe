@@ -7,8 +7,17 @@ import kotlinx.coroutines.flow.Flow
 import java.time.DayOfWeek
 import java.time.ZonedDateTime
 import java.time.temporal.TemporalAdjusters
+import java.util.Calendar
 import javax.inject.Inject
 import javax.inject.Singleton
+
+internal fun mondayStart(now: Calendar): Long = (now.clone() as Calendar).apply {
+    add(Calendar.DAY_OF_YEAR, -((get(Calendar.DAY_OF_WEEK) + 5) % 7))
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis
 
 @Singleton
 class StatsRepository @Inject constructor(private val dao: InterventionEventDao) {
@@ -56,4 +65,9 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
     fun getRecentEvents(): Flow<List<InterventionEvent>> = dao.getRecent()
 
     suspend fun recordEvent(event: InterventionEvent) = dao.insert(event)
+
+    suspend fun getHistory(): List<InterventionEvent> = dao.getAllOrdered()
+
+    /** Deletes choices only; monitored apps and their settings belong to another table. */
+    suspend fun clearHistory() = dao.clearHistory()
 }
