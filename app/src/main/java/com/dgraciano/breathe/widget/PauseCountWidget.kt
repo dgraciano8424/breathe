@@ -20,8 +20,7 @@ import javax.inject.Inject
 private const val TAG = "PauseCountWidget"
 
 /**
- * Home-screen widget showing how many times the user chose not to open a distracting
- * app today, and how much time that gave them back.
+ * Home-screen widget showing today's recorded Continue and Go back choices.
  *
  * Built on RemoteViews rather than Glance: the content is three pieces of text, and
  * Glance would add a dependency with its own Compose-runtime constraints for no gain.
@@ -43,11 +42,11 @@ class PauseCountWidget : AppWidgetProvider() {
         appScope.launch {
             try {
                 val declined = statsRepo.getTodayDeclined()
-                val minutesSaved = statsRepo.getTodayMinutesSaved()
+                val choices = statsRepo.getTodayTotalAttempts()
                 appWidgetIds.forEach { id ->
                     appWidgetManager.updateAppWidget(
                         id,
-                        buildViews(context, declined, minutesSaved)
+                        buildViews(context, declined, choices)
                     )
                 }
             } catch (e: Exception) {
@@ -58,22 +57,18 @@ class PauseCountWidget : AppWidgetProvider() {
         }
     }
 
-    private fun buildViews(context: Context, declined: Int, minutesSaved: Int): RemoteViews =
+    private fun buildViews(context: Context, declined: Int, choices: Int): RemoteViews =
         RemoteViews(context.packageName, R.layout.widget_pause_count).apply {
-            setTextViewText(R.id.widget_count, declined.toString())
+            setTextViewText(R.id.widget_count, choices.toString())
             setTextViewText(
                 R.id.widget_label,
                 context.resources.getQuantityString(
-                    R.plurals.widget_pauses_today, declined, declined
+                    R.plurals.widget_pauses_today, choices, choices
                 )
             )
             setTextViewText(
                 R.id.widget_saved,
-                if (minutesSaved > 0) {
-                    context.getString(R.string.widget_time_won_back, formatMinutes(minutesSaved))
-                } else {
-                    context.getString(R.string.widget_no_time_yet)
-                }
+                context.getString(R.string.widget_choices, declined, (choices - declined).coerceAtLeast(0))
             )
             setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
         }
@@ -106,15 +101,5 @@ class PauseCountWidget : AppWidgetProvider() {
                 }
             )
         }
-    }
-}
-
-private fun formatMinutes(minutes: Int): String {
-    val h = minutes / 60
-    val m = minutes % 60
-    return when {
-        h > 0 && m > 0 -> "${h}h ${m}m"
-        h > 0 -> "${h}h"
-        else -> "${m}m"
     }
 }

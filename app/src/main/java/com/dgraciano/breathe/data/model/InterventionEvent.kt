@@ -2,8 +2,9 @@ package com.dgraciano.breathe.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.Index
 
-@Entity(tableName = "intervention_events")
+@Entity(tableName = "intervention_events", indices = [Index(value = ["choiceId"], unique = true)])
 data class InterventionEvent(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val packageName: String,
@@ -11,7 +12,8 @@ data class InterventionEvent(
     val timestamp: Long = System.currentTimeMillis(),
     val outcome: String,
     val reason: String? = null,
-    val minutesSaved: Int = 0
+    val minutesSaved: Int = 0,
+    val choiceId: String? = null
 ) {
     companion object {
         const val OUTCOME_DECLINED = "DECLINED"

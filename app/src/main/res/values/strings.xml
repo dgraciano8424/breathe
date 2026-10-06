@@ -26,11 +26,10 @@
     <string name="accessibility_service_summary">Shows a mindful pause before your chosen apps open</string>
     <string name="accessibility_service_description">Breathe needs this to notice the moment you open an app you have chosen to pause. It reads only which app comes to the front — never the contents of your screen, your messages, or anything you type. Nothing leaves your device.</string>
 
-    <string name="widget_description">Shows how many mindful pauses you have taken today.</string>
-    <string name="widget_time_won_back">%s won back</string>
-    <string name="widget_no_time_yet">No pauses yet today</string>
+    <string name="widget_description">Shows your recorded choices after a pause today.</string>
+    <string name="widget_choices">%1$d went back · %2$d continued</string>
     <plurals name="widget_pauses_today">
-        <item quantity="one">pause taken today</item>
-        <item quantity="other">pauses taken today</item>
+        <item quantity="one">choice today</item>
+        <item quantity="other">choices today</item>
     </plurals>
 </resources>

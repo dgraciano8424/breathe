@@ -8,8 +8,9 @@ import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.SessionApprovalStore
-import com.dgraciano.breathe.service.SessionTimeHelper
-import com.dgraciano.breathe.widget.WidgetRefresher
+import com.dgraciano.breathe.service.PauseClock
+import com.dgraciano.breathe.data.repository.ChoiceRecorder
+import com.dgraciano.breathe.data.model.PendingChoice
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -36,10 +37,11 @@ class PauseViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var statsRepo: StatsRepository
     private lateinit var tipsRepo: MentalHealthTipsRepository
-    private lateinit var sessionTimeHelper: SessionTimeHelper
+    private lateinit var clock: PauseClock
+    private var elapsed = 0L
     private lateinit var sessionApprovalStore: SessionApprovalStore
     private lateinit var appRepo: AppRepository
-    private lateinit var widgetRefresher: WidgetRefresher
+    private lateinit var recorder: ChoiceRecorder
     private lateinit var appScope: CoroutineScope
     private lateinit var viewModel: PauseViewModel
 
@@ -52,9 +54,10 @@ class PauseViewModelTest {
             every { getRandomTip() } returns MentalHealthTip("Ground Yourself", "Feel your feet on the floor.", "ground")
             every { getRandomActivity() } returns "Step outside for 2 minutes"
         }
-        sessionTimeHelper = mockk { every { getAvgSessionMinutes(any()) } returns 20 }
+        elapsed = 0L
+        clock = mockk { every { now() } answers { elapsed + testDispatcher.scheduler.currentTime } }
         sessionApprovalStore = mockk(relaxed = true)
-        widgetRefresher = mockk(relaxed = true)
+        recorder = mockk()
         appRepo = mockk {
             coEvery { getPauseSeconds(any()) } returns BlockedApp.DEFAULT_PAUSE_SECONDS
         }
@@ -62,15 +65,16 @@ class PauseViewModelTest {
             statsRepo = statsRepo,
             appRepo = appRepo,
             tipsRepo = tipsRepo,
-            sessionTimeHelper = sessionTimeHelper,
+            clock = clock,
             sessionApprovalStore = sessionApprovalStore,
-            widgetRefresher = widgetRefresher,
+            choiceRecorder = recorder,
             appScope = appScope
         )
     }
 
     @After
     fun tearDown() {
+        if (::viewModel.isInitialized) viewModel.viewModelScope.cancel()
         appScope.cancel()
         Dispatchers.resetMain()
     }
@@ -105,6 +109,24 @@ class PauseViewModelTest {
     }
 
     @Test
+    fun `failed attempt count retains the configured duration and releases setup`() = runTest {
+        coEvery { appRepo.getPauseSeconds("com.slow") } returns 60
+        coEvery { statsRepo.getTodayAttemptCount(any()) } throws IllegalStateException("unavailable")
+        viewModel.init("com.slow", "Slow App")
+        assertEquals(60, viewModel.pauseSeconds.value)
+        assertEquals(1, viewModel.attemptCount.value)
+        org.junit.Assert.assertTrue(viewModel.ready.value)
+    }
+
+    @Test
+    fun `failed duration read falls back without crashing setup`() = runTest {
+        coEvery { appRepo.getPauseSeconds(any()) } throws IllegalStateException("unavailable")
+        viewModel.init("com.example", "Example App")
+        assertEquals(BlockedApp.DEFAULT_PAUSE_SECONDS, viewModel.pauseSeconds.value)
+        org.junit.Assert.assertTrue(viewModel.ready.value)
+    }
+
+    @Test
     fun `selectReason sets the selected reason`() {
         viewModel.selectReason(InterventionEvent.REASON_BORED)
         assertEquals(InterventionEvent.REASON_BORED, viewModel.selectedReason.value)
@@ -127,8 +149,8 @@ class PauseViewModelTest {
     @Test
     fun `recordDeclined records event with DECLINED outcome and current reason`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        val slot = slot<InterventionEvent>()
-        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+        val slot = slot<PendingChoice>()
+        coEvery { recorder.enqueue(capture(slot)) } returns Unit
 
         viewModel.init("com.example", "Example App")
         viewModel.selectReason(InterventionEvent.REASON_BORED)
@@ -144,8 +166,8 @@ class PauseViewModelTest {
     @Test
     fun `recordDeclined with no reason selected records null reason`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        val slot = slot<InterventionEvent>()
-        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+        val slot = slot<PendingChoice>()
+        coEvery { recorder.enqueue(capture(slot)) } returns Unit
 
         viewModel.init("com.example", "Example App")
         viewModel.recordDeclined()
@@ -156,61 +178,60 @@ class PauseViewModelTest {
     @Test
     fun `recordOpened records event with OPENED outcome`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        val slot = slot<InterventionEvent>()
-        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+        val slot = slot<PendingChoice>()
+        coEvery { recorder.enqueue(capture(slot)) } returns Unit
 
         viewModel.init("com.example", "Example App")
-        viewModel.recordOpened()
+        openAfterCountdown()
 
         assertEquals(InterventionEvent.OUTCOME_OPENED, slot.captured.outcome)
         assertEquals("com.example", slot.captured.packageName)
     }
 
     @Test
-    fun `recordDeclined then recordOpened both use the correct package`() = runTest {
+    fun `repeated conflicting choices record only the first choice`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        val events = mutableListOf<InterventionEvent>()
-        coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
+        val events = mutableListOf<PendingChoice>()
+        coEvery { recorder.enqueue(capture(events)) } returns Unit
 
         viewModel.init("com.target.app", "Target App")
         viewModel.recordDeclined()
-        viewModel.recordOpened()
+        openAfterCountdown()
 
-        assertEquals(2, events.size)
+        assertEquals(1, events.size)
         assertEquals("com.target.app", events[0].packageName)
-        assertEquals("com.target.app", events[1].packageName)
         assertEquals(InterventionEvent.OUTCOME_DECLINED, events[0].outcome)
-        assertEquals(InterventionEvent.OUTCOME_OPENED, events[1].outcome)
+        verify(exactly = 0) { sessionApprovalStore.approve(any()) }
     }
 
     @Test
-    fun `recordDeclined still persists when the ViewModel scope is cancelled`() = runTest {
+    fun `Declined is enqueued before the host destroys its ViewModel`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        val slot = slot<InterventionEvent>()
-        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+        val slot = slot<PendingChoice>()
+        coEvery { recorder.enqueue(capture(slot)) } returns Unit
 
         viewModel.init("com.example", "Example App")
-        // PauseActivity calls finish() immediately, clearing the ViewModel.
-        viewModel.viewModelScope.cancel()
+        // The host can finish after the durable enqueue callback.
         viewModel.recordDeclined()
+        viewModel.viewModelScope.cancel()
 
         assertEquals(InterventionEvent.OUTCOME_DECLINED, slot.captured.outcome)
         assertEquals("com.example", slot.captured.packageName)
-        coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
+        coVerify(exactly = 1) { recorder.enqueue(any()) }
     }
 
     @Test
-    fun `recordOpened still persists when the ViewModel scope is cancelled`() = runTest {
+    fun `Continue is enqueued before the host destroys its ViewModel`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        val slot = slot<InterventionEvent>()
-        coEvery { statsRepo.recordEvent(capture(slot)) } returns Unit
+        val slot = slot<PendingChoice>()
+        coEvery { recorder.enqueue(capture(slot)) } returns Unit
 
         viewModel.init("com.example", "Example App")
+        openAfterCountdown()
         viewModel.viewModelScope.cancel()
-        viewModel.recordOpened()
 
         assertEquals(InterventionEvent.OUTCOME_OPENED, slot.captured.outcome)
-        coVerify(exactly = 1) { statsRepo.recordEvent(any()) }
+        coVerify(exactly = 1) { recorder.enqueue(any()) }
     }
 
     @Test
@@ -236,47 +257,97 @@ class PauseViewModelTest {
     }
 
     @Test
-    fun `recording an event refreshes the home screen widget`() = runTest {
+    fun `host closes only after a durable enqueue and duplicates cannot close it again`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        coEvery { statsRepo.recordEvent(any()) } returns Unit
-
-        viewModel.init("com.example", "Example App")
-        viewModel.recordDeclined()
-
-        verify(exactly = 1) { widgetRefresher.refresh() }
+        val waiting = kotlinx.coroutines.CompletableDeferred<Unit>()
+        coEvery { recorder.enqueue(any()) } coAnswers { waiting.await() }
+        viewModel.init("com.example", "Example")
+        var exits = 0
+        viewModel.recordDeclined { exits++ }
+        assertEquals(true, viewModel.saving.value)
+        assertEquals(0, exits)
+        viewModel.recordDeclined { exits++ }
+        waiting.complete(Unit)
+        assertEquals(1, exits)
+        coVerify(exactly = 1) { recorder.enqueue(any()) }
     }
 
     @Test
-    fun `a failed write leaves the widget showing the last good count`() = runTest {
+    fun `a failed durable write shows retry and does not close or approve the app`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        coEvery { statsRepo.recordEvent(any()) } throws IllegalStateException("disk full")
-
-        viewModel.init("com.example", "Example App")
-        viewModel.recordDeclined()
-
-        // Refreshing here would redraw the same number and imply the choice counted.
-        verify(exactly = 0) { widgetRefresher.refresh() }
+        coEvery { recorder.enqueue(any()) } throws IllegalStateException("disk full")
+        viewModel.init("com.example", "Example")
+        viewModel.startCountdown()
+        elapsed += 60_000
+        var exits = 0
+        viewModel.recordOpened { exits++ }
+        assertEquals(0, exits)
+        assertEquals(false, viewModel.saving.value)
+        org.junit.Assert.assertNotNull(viewModel.saveError.value)
+        verify(exactly = 0) { sessionApprovalStore.approve(any()) }
+        coEvery { recorder.enqueue(any()) } returns Unit
+        viewModel.recordDeclined { exits++ }
+        assertEquals(1, exits)
+        assertNull(viewModel.saveError.value)
     }
 
     @Test
-    fun `a failed write is swallowed rather than crashing the app scope`() = runTest {
+    fun `late save after retargeting persists its original target without closing the new pause`() = runTest {
         coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-        coEvery { statsRepo.recordEvent(any()) } throws IllegalStateException("disk full")
+        val waiting = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val captured = slot<PendingChoice>()
+        coEvery { recorder.enqueue(capture(captured)) } coAnswers { waiting.await() }
+        viewModel.init("com.first", "First")
+        var exits = 0
+        viewModel.recordDeclined { exits++ }
+        viewModel.init("com.second", "Second")
+        waiting.complete(Unit)
+        assertEquals("com.first", captured.captured.packageName)
+        assertEquals(0, exits)
+        assertEquals(false, viewModel.saving.value)
+    }
 
-        viewModel.init("com.example", "Example App")
-        // The pause screen is already gone; a throw here would reach no user.
-        viewModel.recordDeclined()
+    @Test
+    fun `leaving during enqueue never grants a stale approval or navigates a new window`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        val waiting = kotlinx.coroutines.CompletableDeferred<Unit>()
+        coEvery { recorder.enqueue(any()) } coAnswers { waiting.await() }
+        viewModel.init("com.example", "Example")
+        viewModel.startCountdown()
+        elapsed += 60_000
+        var exits = 0
+        viewModel.recordOpened { exits++ }
+        viewModel.viewModelScope.cancel()
+        waiting.complete(Unit)
+        assertEquals(0, exits)
+        verify(exactly = 0) { sessionApprovalStore.approve(any()) }
+        coVerify(exactly = 1) { recorder.enqueue(any()) }
+    }
+
+    @Test
+    fun `direct Continue calls cannot bypass the countdown`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        viewModel.init("com.example", "Example")
         viewModel.recordOpened()
+        viewModel.startCountdown()
+        elapsed = 14_999
+        viewModel.recordOpened()
+        coVerify(exactly = 0) { recorder.enqueue(any()) }
+        verify(exactly = 0) { sessionApprovalStore.approve(any()) }
+    }
 
-        coVerify(exactly = 2) { statsRepo.recordEvent(any()) }
+    private fun openAfterCountdown() {
+        viewModel.startCountdown()
+        elapsed += 60_000
+        viewModel.recordOpened()
     }
 
     @Test
     fun `recordDeclined captures the target app before a retargeting init can change it`() =
         runTest {
             coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
-            val events = mutableListOf<InterventionEvent>()
-            coEvery { statsRepo.recordEvent(capture(events)) } returns Unit
+            val events = mutableListOf<PendingChoice>()
+            coEvery { recorder.enqueue(capture(events)) } returns Unit
 
             viewModel.init("com.first", "First App")
             viewModel.recordDeclined()
@@ -286,4 +357,62 @@ class PauseViewModelTest {
             assertEquals("com.first", events.single().packageName)
             assertEquals("First App", events.single().appName)
         }
+
+    @Test
+    fun `a new pause clears its reason and permits a new choice`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        val events = mutableListOf<PendingChoice>()
+        coEvery { recorder.enqueue(capture(events)) } returns Unit
+        viewModel.init("com.first", "First")
+        val firstId = viewModel.sessionId.value
+        viewModel.selectReason(InterventionEvent.REASON_BORED)
+        viewModel.recordDeclined()
+        viewModel.init("com.second", "Second")
+        assertNull(viewModel.selectedReason.value)
+        assertEquals(firstId + 1, viewModel.sessionId.value)
+        openAfterCountdown()
+        assertEquals(listOf("com.first", "com.second"), events.map { it.packageName })
+        assertNull(events[1].reason)
+    }
+
+    @Test
+    fun `late initialization for the previous app cannot overwrite a new pause`() = runTest {
+        val waiting = kotlinx.coroutines.CompletableDeferred<Int>()
+        coEvery { appRepo.getPauseSeconds("com.first") } coAnswers {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { waiting.await() }
+        }
+        coEvery { appRepo.getPauseSeconds("com.second") } returns 5
+        coEvery { statsRepo.getTodayAttemptCount("com.first") } returns 90
+        coEvery { statsRepo.getTodayAttemptCount("com.second") } returns 2
+        viewModel.init("com.first", "First")
+        assertEquals(false, viewModel.ready.value)
+        viewModel.init("com.second", "Second")
+        waiting.complete(60)
+        assertEquals(5, viewModel.pauseSeconds.value)
+        assertEquals(3, viewModel.attemptCount.value)
+        assertEquals(true, viewModel.ready.value)
+    }
+
+    @Test
+    fun `legitimate intentions remain optional and reset for a new pause`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { recorder.enqueue(any()) } returns Unit
+        viewModel.init("com.example", "Example")
+        viewModel.selectReason("WORK")
+        openAfterCountdown()
+        coVerify { recorder.enqueue(match { it.reason == "WORK" && it.outcome == InterventionEvent.OUTCOME_OPENED }) }
+        viewModel.init("com.other", "Other")
+        assertNull(viewModel.selectedReason.value)
+        viewModel.selectReason("RELAX")
+        assertEquals("RELAX", viewModel.selectedReason.value)
+        viewModel.selectReason("RELAX")
+        assertNull(viewModel.selectedReason.value)
+    }
+
+    @Test
+    fun `unknown reasons cannot replace an explicit intention`() = runTest {
+        viewModel.selectReason("LEARN")
+        viewModel.selectReason("unexpected")
+        assertEquals("LEARN", viewModel.selectedReason.value)
+    }
 }

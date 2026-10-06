@@ -4,7 +4,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
@@ -45,11 +47,19 @@ fun AppSelectScreen(
     val selectedCount by viewModel.selectedCount.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val savingPackages by viewModel.savingPackages.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isSaving = savingPackages.isNotEmpty()
+    BackHandler(enabled = isSaving) { }
+    LaunchedEffect(viewModel) {
+        viewModel.feedback.collect { snackbarHostState.showSnackbar(it) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
         WaveBackground(modifier = Modifier.fillMaxSize())
 
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 Column(modifier = Modifier.background(Color.Transparent)) {
                     TopAppBar(
@@ -61,7 +71,7 @@ fun AppSelectScreen(
                             )
                         },
                         navigationIcon = {
-                            IconButton(onClick = onDone) {
+                            IconButton(onClick = onDone, enabled = !isSaving) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Back",
@@ -110,6 +120,7 @@ fun AppSelectScreen(
                                 listOf(Color.Transparent, BreatheBackground.copy(alpha = 0.95f))
                             )
                         )
+                        .navigationBarsPadding()
                         .padding(horizontal = 20.dp, vertical = 16.dp)
                 ) {
                     Button(
@@ -124,13 +135,15 @@ fun AppSelectScreen(
                             disabledContainerColor = BreatheSurface.copy(alpha = 0.6f),
                             disabledContentColor = BreatheTextMuted
                         ),
-                        enabled = selectedCount > 0
+                        enabled = !isLoading && !isSaving && errorMessage == null
                     ) {
                         Text(
-                            text = if (selectedCount > 0) {
-                                "Add ${selectedCount} ${if (selectedCount == 1) "app" else "apps"} to Nimbus"
+                            text = if (isSaving) {
+                                "Saving your choices…"
+                            } else if (selectedCount > 0) {
+                                "Done · $selectedCount ${if (selectedCount == 1) "app" else "apps"} monitored"
                             } else {
-                                "Select apps to pause"
+                                "Done"
                             },
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
@@ -176,7 +189,9 @@ fun AppSelectScreen(
                 ) {
                     item {
                         Text(
-                            text = if (searchQuery.isEmpty()) "MOST USED THIS WEEK" else "SEARCH RESULTS",
+                            text = if (searchQuery.isNotEmpty()) "SEARCH RESULTS"
+                                else if (apps.any { it.usageTimeMinutes != null }) "MOST USED THIS WEEK"
+                                else "YOUR APPS",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = BreatheSecondary,
@@ -186,7 +201,11 @@ fun AppSelectScreen(
                     }
                     
                     items(apps, key = { it.packageName }) { app ->
-                        AppListItem(app = app, onClick = { viewModel.toggleBlock(app) })
+                        AppListItem(
+                            app = app,
+                            isSaving = app.packageName in savingPackages,
+                            onClick = { viewModel.toggleBlock(app) }
+                        )
                     }
                 }
             }
@@ -240,7 +259,7 @@ private fun StatusMessage(
 }
 
 @Composable
-fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
+fun AppListItem(app: InstalledApp, isSaving: Boolean = false, onClick: () -> Unit) {
     val scale by animateFloatAsState(
         targetValue = if (app.isBlocked) 1.05f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -257,7 +276,12 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .scale(scale)
-            .clickable { onClick() },
+            .toggleable(
+                value = app.isBlocked,
+                enabled = !isSaving,
+                role = Role.Checkbox,
+                onValueChange = { onClick() }
+            ),
         shape = RoundedCornerShape(16.dp),
         border = if (app.isBlocked) androidx.compose.foundation.BorderStroke(2.dp, borderColor) else null,
         colors = CardDefaults.cardColors(
@@ -298,15 +322,17 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
                 )
                 Text(
                     text = formatUsageTime(app.usageTimeMinutes),
-                    color = if (app.usageTimeMinutes > 60) Color(0xFFFF8A80) else BreatheTextMuted,
+                    color = if ((app.usageTimeMinutes ?: 0) > 60) Color(0xFFFF8A80) else BreatheTextMuted,
                     fontSize = 12.sp
                 )
             }
             
-            if (app.isBlocked) {
+            if (isSaving) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            } else if (app.isBlocked) {
                 Icon(
                     Icons.Default.Check,
-                    contentDescription = "Blocked",
+                    contentDescription = null,
                     tint = BreathePrimary,
                     modifier = Modifier.size(24.dp)
                 )
@@ -322,8 +348,9 @@ fun AppListItem(app: InstalledApp, onClick: () -> Unit) {
     }
 }
 
-private fun formatUsageTime(minutes: Int): String {
-    if (minutes == 0) return "Not used this week"
+private fun formatUsageTime(minutes: Int?): String {
+    if (minutes == null) return "No usage data available"
+    if (minutes == 0) return "Less than a minute recorded this week"
     val h = minutes / 60
     val m = minutes % 60
     return if (h > 0) "${h}h ${m}m spent this week" else "${m}m spent this week"

@@ -41,7 +41,13 @@ class SessionTimeHelper @Inject constructor(
         val now = clock()
         cache[packageName]?.let { if (now - it.computedAt < CACHE_TTL_MS) return it.minutes }
 
-        val result = computeAvgSessionMinutes(packageName, now)
+        val result = try {
+            computeAvgSessionMinutes(packageName, now)
+        } catch (_: SecurityException) {
+            // Usage access is optional. A denied query must not lose the user's choice.
+            // Do not cache permission failures: access may be granted before the next pause.
+            return DEFAULT_SESSION_MINUTES
+        }
         cache[packageName] = Entry(result, now)
         return result
     }

@@ -94,7 +94,8 @@ Three declarations will be challenged; have these answers ready.
 - **AccessibilityService.** Requires the Play Console declaration and an in-app
   prominent disclosure with affirmative consent, both of which the app now has.
   Justification: the service detects which app has come to the front so the pause
-  can appear before it draws. It requests window-state events only and sets
+  can appear over it. App content may briefly appear first, and protected screens
+  can suppress overlays. It requests window-state events only and sets
   `canRetrieveWindowContent="false"`, so it cannot read screen contents. It does
   **not** set `isAccessibilityTool`, because policy excludes monitoring apps from
   that flag.
@@ -128,7 +129,7 @@ against Play's limits and a list of the claims that would go stale first.
 
 ## Device verification (outstanding)
 
-None of this has been run on real hardware. In rough order of risk:
+Setup, Home, Settings, picker, insights, achievements and practice navigation were checked on a Samsung SM_S938U in the preceding session. Core interception on that phone remains outstanding. October 6 read-only emulator evidence is recorded in COMPETITION_READINESS.md; it does not close the following physical-device release checks. In rough order of risk:
 
 1. **Does the pause screen appear?** Open a monitored app. This is the whole
    product, and neither the overlay nor the accessibility service has ever been
@@ -160,3 +161,24 @@ None of this has been run on real hardware. In rough order of risk:
 8. **Onboarding on an older device** (API 26–28) if you can find one, since that
    path had an API-level crash that was only recently fixed. This path changed with
    the accessibility rewrite — the prominent disclosure and consent flow are new.
+
+## Timed break checks
+
+- Start each 15/30/60-minute break; confirm Home shows its resume time and Test a pause is disabled. Monitored apps should open without an overlay.
+- Start a break with a pause pending (for example, from split screen). Confirm the overlay dismisses without recording Continue or Go back. Check the fallback pause Activity as well: it should close while snoozed and reject a new pause intent.
+- Resume early and revisit a monitored app. Confirm a fresh pause and no leftover visit approval.
+- Let the deadline expire, then revisit a monitored app. Confirm a pause; an app already open is not forcibly interrupted by the timer.
+- Restart Breathe, let Android recreate the accessibility service, and reboot during a break. Confirm the saved deadline survives and an expired deadline does not disable pauses.
+- Test screen sleep through expiry, forward/backward device-clock changes, missing overlay/accessibility permissions, large text and screen-reader labels. Changing the device clock changes the deadline behavior.
+- Failed saves should retain the previous status and allow retry; app selection and history should remain intact.
+
+- Verify widget placement, refresh after a choice/history clear, tap-to-open and removal with the non-exported receiver. Ordinary other apps must not be able to send it an update broadcast.
+- Inspect production logs after a controlled failed history write; the marker must not include a monitored app identifier, outcome, reason or exception details.
+
+## Personal reminder and intention checks
+
+- Save, edit and remove a personal reminder. Cancel an edit and verify the previous text stays. Restart the app and accessibility service to confirm persistence.
+- Check both the overlay and fallback pause Activity, large text, landscape, keyboard visibility and screen-reader labels. The reminder should wrap; expanded intention choices should wrap and scroll.
+- Edit a reminder during a pause (for example, from split screen); verify the text updates without restarting the countdown or clearing an already selected intention.
+- Save failure should keep the dialog/draft available and preserve the previous reminder. Long input should be rejected; reminders must not appear in statistics exports or choice records.
+- Select each intention, tap again to clear, skip intentions and hide/reveal the section. Choosing Work or Relax must not bypass the countdown; Go back remains immediate. Verify legacy reasons remain in existing history and exports.

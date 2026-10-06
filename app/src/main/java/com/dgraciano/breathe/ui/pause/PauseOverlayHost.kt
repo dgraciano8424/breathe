@@ -9,12 +9,14 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -29,16 +31,11 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.dgraciano.breathe.data.repository.AppRepository
-import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
-import com.dgraciano.breathe.data.repository.StatsRepository
-import com.dgraciano.breathe.di.ApplicationScope
-import com.dgraciano.breathe.service.SessionApprovalStore
-import com.dgraciano.breathe.service.SessionTimeHelper
+import com.dgraciano.breathe.data.repository.PausePreferences
+import com.dgraciano.breathe.service.MonitoringStatus
 import com.dgraciano.breathe.ui.theme.BreatheTheme
-import com.dgraciano.breathe.widget.WidgetRefresher
+import android.content.pm.ApplicationInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -49,14 +46,20 @@ private const val TAG = "PauseOverlay"
 private fun PauseOverlayContent(
     appName: String,
     viewModel: PauseViewModel,
+    preferences: PausePreferences,
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
     val attemptCount by viewModel.attemptCount.collectAsState()
     val selectedReason by viewModel.selectedReason.collectAsState()
+    val reminder by preferences.reminder.collectAsState()
     val tip by viewModel.tip.collectAsState()
     val activity by viewModel.alternativeActivity.collectAsState()
-    val pauseSeconds by viewModel.pauseSeconds.collectAsState()
+    val secondsLeft by viewModel.secondsRemaining.collectAsState()
+    val saving by viewModel.saving.collectAsState()
+    val saveError by viewModel.saveError.collectAsState()
+    val sessionId by viewModel.sessionId.collectAsState()
+    val ready by viewModel.ready.collectAsState()
 
     PauseScreen(
         appName = appName,
@@ -64,7 +67,13 @@ private fun PauseOverlayContent(
         tip = tip,
         alternativeActivity = activity,
         selectedReason = selectedReason,
-        pauseSeconds = pauseSeconds,
+        personalReminder = reminder,
+        secondsLeft = secondsLeft,
+        saving = saving,
+        saveError = saveError,
+        onDisplayed = viewModel::startCountdown,
+        sessionId = sessionId,
+        ready = ready,
         onReasonSelected = viewModel::selectReason,
         onYes = onYes,
         onNo = onNo
@@ -87,13 +96,9 @@ private fun PauseOverlayContent(
 @Singleton
 class PauseOverlayHost @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val statsRepo: StatsRepository,
-    private val appRepo: AppRepository,
-    private val tipsRepo: MentalHealthTipsRepository,
-    private val sessionTimeHelper: SessionTimeHelper,
-    private val sessionApprovalStore: SessionApprovalStore,
-    private val widgetRefresher: WidgetRefresher,
-    @ApplicationScope private val appScope: CoroutineScope
+    private val viewModelFactory: PauseViewModelFactory,
+    private val monitoringStatus: MonitoringStatus,
+    private val pausePreferences: PausePreferences
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager by lazy { context.getSystemService(WindowManager::class.java) }
@@ -110,16 +115,21 @@ class PauseOverlayHost @Inject constructor(
     @Volatile
     var isShowing: Boolean = false
         private set
+    @Volatile
+    var activePackage: String? = null
+        private set
 
     fun canShow(): Boolean = Settings.canDrawOverlays(context)
 
     /** Safe to call from any thread; window work is posted to the main looper. */
     fun show(packageName: String, appName: String) {
+        activePackage = packageName
         isShowing = true
         mainHandler.post { showInternal(packageName, appName) }
     }
 
     fun hide() {
+        activePackage = null
         isShowing = false
         mainHandler.post { hideInternal() }
     }
@@ -133,21 +143,14 @@ class PauseOverlayHost @Inject constructor(
             overlayOwners.viewModelStore,
             viewModelFactory {
                 initializer {
-                    PauseViewModel(
-                        statsRepo = statsRepo,
-                        appRepo = appRepo,
-                        tipsRepo = tipsRepo,
-                        sessionTimeHelper = sessionTimeHelper,
-                        sessionApprovalStore = sessionApprovalStore,
-                        widgetRefresher = widgetRefresher,
-                        appScope = appScope
-                    )
+                    viewModelFactory.create()
                 }
             }
         )[PauseViewModel::class.java]
         viewModel.init(packageName, appName)
 
         val composeView = ComposeView(context).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setViewTreeLifecycleOwner(overlayOwners)
             setViewTreeViewModelStoreOwner(overlayOwners)
             setViewTreeSavedStateRegistryOwner(overlayOwners)
@@ -156,15 +159,12 @@ class PauseOverlayHost @Inject constructor(
                     PauseOverlayContent(
                         appName = appName,
                         viewModel = viewModel,
+                        preferences = pausePreferences,
                         onYes = {
-                            viewModel.recordOpened()
-                            // The blocked app is still in the foreground behind us.
-                            hide()
+                            viewModel.recordOpened { hide() }
                         },
                         onNo = {
-                            viewModel.recordDeclined()
-                            hide()
-                            goHome()
+                            viewModel.recordDeclined { hide(); goHome() }
                         }
                     )
                 }
@@ -172,39 +172,58 @@ class PauseOverlayHost @Inject constructor(
         }
 
         // A plain ComposeView cannot intercept the back key, so it is wrapped in a
-        // container that can. Back dismisses without recording, matching what the
-        // Activity did; the monitor re-intervenes after its debounce.
+        // container that can. Back means the same choice as the Go back button;
+        // merely hiding the overlay would expose the app without approval.
         val container = object : FrameLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    hide()
+                    viewModel.recordDeclined { hide(); goHome() }
                     return true
                 }
                 return super.dispatchKeyEvent(event)
             }
         }.apply {
+            // Compose installs the window recomposer on the window root, not only
+            // the ComposeView child. The root must expose these owners too.
+            setViewTreeLifecycleOwner(overlayOwners)
+            setViewTreeViewModelStoreOwner(overlayOwners)
+            setViewTreeSavedStateRegistryOwner(overlayOwners)
             addView(composeView)
             isFocusableInTouchMode = true
             requestFocus()
         }
 
+        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                // The child installs its window recomposer during the same attach pass.
+                mainHandler.post { if (root === container) overlayOwners.resume() }
+                view.removeOnAttachStateChangeListener(this)
+            }
+            override fun onViewDetachedFromWindow(view: View) = Unit
+        })
+
         try {
             windowManager.addView(container, layoutParams())
-        } catch (e: WindowManager.BadTokenException) {
+        } catch (e: RuntimeException) {
             // Overlay permission can be revoked between the check and the add.
             Log.w(TAG, "Overlay rejected; falling back to the pause activity", e)
             overlayOwners.destroy()
             isShowing = false
-            launchPauseActivity(packageName)
+            activePackage = null
+            monitoringStatus.failed()
+            runCatching { launchPauseActivity(packageName) }
+                .onFailure { Log.w(TAG, "Pause activity also unavailable", it) }
             return
         }
 
         root = container
         owners = overlayOwners
+        monitoringStatus.pauseShown()
     }
 
     private fun hideInternal() {
         val container = root ?: return
+        if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) Log.d(TAG, "Removing pause overlay")
         runCatching { windowManager.removeView(container) }
             .onFailure { Log.w(TAG, "Overlay already detached", it) }
         owners?.destroy()
@@ -255,8 +274,10 @@ class PauseOverlayHost @Inject constructor(
         fun create() {
             // Must restore before the registry is moved past CREATED.
             savedStateController.performRestore(null)
-            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
         }
+
+        fun resume() { lifecycleRegistry.currentState = Lifecycle.State.RESUMED }
 
         fun destroy() {
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED

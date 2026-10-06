@@ -10,10 +10,17 @@ import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.data.repository.PausePreferences
 import com.dgraciano.breathe.service.BreatheAccessibilityService
+import com.dgraciano.breathe.service.MonitoringStatus
+import com.dgraciano.breathe.service.SnoozeStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import com.dgraciano.breathe.di.IoDispatcher
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -21,8 +28,10 @@ import javax.inject.Inject
 
 data class BlockedAppWithStats(
     val app: BlockedApp,
-    val usageMinutes: Int
+    val usageMinutes: Int?
 )
+
+data class MonitoringPermissions(val accessibility: Boolean = false, val overlay: Boolean = false)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -30,7 +39,11 @@ class HomeViewModel @Inject constructor(
     private val statsRepo: StatsRepository,
     private val achievementRepo: AchievementRepository,
     private val usageStatsManager: UsageStatsManager,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val monitoringStatus: MonitoringStatus,
+    private val snoozeStore: SnoozeStore,
+    private val pausePreferences: PausePreferences
 ) : ViewModel() {
 
     private val _blockedAppsWithStats = MutableStateFlow<List<BlockedAppWithStats>>(emptyList())
@@ -51,9 +64,53 @@ class HomeViewModel @Inject constructor(
     private val _nimbusStrength = MutableStateFlow(1)
     val nimbusStrength: StateFlow<Int> = _nimbusStrength
 
-    /** False when the accessibility service is off or overlay permission was revoked. */
-    private val _isMonitoringActive = MutableStateFlow(false)
-    val isMonitoringActive: StateFlow<Boolean> = _isMonitoringActive
+    private val _permissions = MutableStateFlow(MonitoringPermissions())
+    val permissions: StateFlow<MonitoringPermissions> = _permissions
+    val snoozedUntil = snoozeStore.deadline.stateIn(viewModelScope, SharingStarted.Eagerly, snoozeStore.currentDeadline)
+    private val _snoozeBusy = MutableStateFlow(false)
+    val snoozeBusy = _snoozeBusy.asStateFlow()
+    private val _snoozeError = MutableStateFlow<String?>(null)
+    val snoozeError = _snoozeError.asStateFlow()
+
+    fun snooze(minutes: Int) = updateSnooze { snoozeStore.snooze(minutes) }
+    fun resumePauses() = updateSnooze { snoozeStore.resume() }
+    private fun updateSnooze(action: suspend () -> Unit) = viewModelScope.launch {
+        if (_snoozeBusy.value) return@launch
+        _snoozeBusy.value = true
+        _snoozeError.value = null
+        try { action() }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (_: Exception) { _snoozeError.value = "Could not save that change. Try again." }
+        finally { _snoozeBusy.value = false }
+    }
+
+    val personalReminder = pausePreferences.reminder
+    private val _reminderSaving = MutableStateFlow(false)
+    val reminderSaving = _reminderSaving.asStateFlow()
+    private val _reminderError = MutableStateFlow<String?>(null)
+    val reminderError = _reminderError.asStateFlow()
+    fun clearReminderError() { _reminderError.value = null }
+    suspend fun saveReminder(value: String): Boolean {
+        if (_reminderSaving.value) return false
+        _reminderSaving.value = true
+        _reminderError.value = null
+        return try { pausePreferences.saveReminder(value); true }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: IllegalArgumentException) { _reminderError.value = error.message; false }
+        catch (_: Exception) { _reminderError.value = "Your reminder could not be saved. Try again."; false }
+        finally { _reminderSaving.value = false }
+    }
+
+    val monitoring = monitoringStatus.state
+    val isMonitoringActive: StateFlow<Boolean> = combine(_permissions, monitoring) { access, status ->
+        access.accessibility && access.overlay && status.connected && status.appsLoaded
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private val _savingPackages = MutableStateFlow<Set<String>>(emptySet())
+    val savingPackages: StateFlow<Set<String>> = _savingPackages
+    private val messages = Channel<String>(Channel.BUFFERED)
+    val feedback = messages.receiveAsFlow()
+    private var statsJob: Job? = null
 
     /**
      * Per-package foreground minutes over the last 7 days, refreshed on its own schedule
@@ -65,6 +122,15 @@ class HomeViewModel @Inject constructor(
         refreshMonitoringState()
         refreshStats()
         loadAppsWithStats()
+        viewModelScope.launch {
+            // Startup/retry delivery may commit after the first on-resume read.
+            statsRepo.getRecentEvents().catch {
+                android.util.Log.w("HomeViewModel", "History observation unavailable; resume can refresh", it)
+            }.collect {
+                statsJob?.join()
+                refreshStats()
+            }
+        }
     }
 
     /**
@@ -76,7 +142,7 @@ class HomeViewModel @Inject constructor(
     private fun loadAppsWithStats() {
         viewModelScope.launch {
             combine(repo.getBlockedApps(), _usageMinutes) { apps, usage ->
-                apps.map { app -> BlockedAppWithStats(app, usage[app.packageName] ?: 0) }
+                apps.map { app -> BlockedAppWithStats(app, usage[app.packageName]) }
             }.collect { _blockedAppsWithStats.value = it }
         }
     }
@@ -86,7 +152,7 @@ class HomeViewModel @Inject constructor(
      * optional, so a missing grant means "no times to show", not a failure.
      */
     private fun refreshUsage() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             val now = System.currentTimeMillis()
             val start = now - TimeUnit.DAYS.toMillis(7)
             _usageMinutes.value = runCatching {
@@ -96,11 +162,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun removeApp(app: BlockedApp) = viewModelScope.launch { repo.unblockApp(app) }
+    fun removeApp(app: BlockedApp) = changeApp(app.packageName) { repo.unblockApp(app) }
 
     /** The blocked-app Flow re-emits, so the row updates without extra plumbing. */
-    fun setPauseSeconds(packageName: String, seconds: Int) = viewModelScope.launch {
-        repo.setPauseSeconds(packageName, seconds)
+    fun setPauseSeconds(packageName: String, seconds: Int) {
+        if (seconds !in BlockedApp.PAUSE_OPTIONS) return
+        changeApp(packageName) { repo.setPauseSeconds(packageName, seconds) }
+    }
+
+    private fun changeApp(packageName: String, write: suspend () -> Unit) {
+        if (packageName in _savingPackages.value) return
+        _savingPackages.update { it + packageName }
+        viewModelScope.launch {
+            try {
+                write()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                messages.send("Couldn't save that app change. Your previous setting is still in place. Try again.")
+            } finally {
+                _savingPackages.update { it - packageName }
+            }
+        }
     }
 
     /**
@@ -109,19 +192,30 @@ class HomeViewModel @Inject constructor(
      * previously left every screen silently showing zeros.
      */
     fun refreshMonitoringState() {
-        _isMonitoringActive.value =
-            BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)
+        snoozeStore.refreshExpiry()
+        _permissions.value = MonitoringPermissions(BreatheAccessibilityService.isEnabled(context), Settings.canDrawOverlays(context))
     }
 
     fun refreshStats() {
+        if (statsJob?.isActive == true) return
         refreshUsage()
-        viewModelScope.launch {
-            _todayAttempts.value = statsRepo.getTodayTotalAttempts()
-            _todayDeclined.value = statsRepo.getTodayDeclined()
-            _todayMinutesSaved.value = statsRepo.getTodayMinutesSaved()
-            val userProgress = achievementRepo.getUserProgress()
-            _progress.value = userProgress
-            _nimbusStrength.value = userProgress.currentLevel.index + 1
+        statsJob = viewModelScope.launch {
+            try {
+                val attempts = statsRepo.getTodayTotalAttempts()
+                val declined = statsRepo.getTodayDeclined()
+                val minutesSaved = statsRepo.getTodayMinutesSaved()
+                val userProgress = achievementRepo.getUserProgress()
+                // Keep the last complete result if any of the reads fail.
+                _todayAttempts.value = attempts
+                _todayDeclined.value = declined
+                _todayMinutesSaved.value = minutesSaved
+                _progress.value = userProgress
+                _nimbusStrength.value = userProgress.currentLevel.index + 1
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                messages.send("Couldn't refresh your home insights. Reopen this screen to try again.")
+            }
         }
     }
 }

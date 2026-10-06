@@ -1,7 +1,7 @@
 # Breathe — Privacy Policy
 
 **Published at:** https://dgraciano8424.github.io/breathe/
-**Last updated:** 2026-08-10
+**Last updated:** 2026-10-05
 
 > The published copy is `docs/index.html`, which is what Play Console links to.
 > Edit both together — a policy that contradicts itself between two public copies
@@ -21,12 +21,16 @@ Breathe keeps a local database on your phone containing:
 
 - The apps you have chosen to pause before opening, and the pause length you set
   for each.
-- A record of each pause: which app, when, whether you continued or chose not to,
+- A record of your pause choices: which app, when, whether you continued or chose not to,
   the optional reason you tapped, and an estimate of the minutes you reclaimed.
 
 This database is used to show you your own statistics and progress. It is never
 uploaded anywhere. Device backup is disabled for it, so it is excluded from cloud
 backups and from device-to-device transfer.
+
+Breathe also stores a local snooze deadline when you take a timed break from app pauses. It is a setting, contains no app names or browsing data, and is excluded from cloud backup and device transfer. Breathe does not transmit or synchronize it. Resuming early clears it; an expired deadline no longer pauses monitoring.
+
+You can also save an optional personal reminder of up to 140 characters. This text stays in private local preferences, is excluded from cloud backup and device transfer, and is not included in choice history or CSV exports. Clear the text and save to remove it. It is not separately encrypted by Breathe.
 
 ## Permissions, and why each is needed
 

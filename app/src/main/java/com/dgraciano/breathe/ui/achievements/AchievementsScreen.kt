@@ -19,6 +19,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.dgraciano.breathe.data.model.Achievements
 import com.dgraciano.breathe.data.model.MilestoneBadge
 import com.dgraciano.breathe.data.model.UserProgress
@@ -32,7 +35,16 @@ fun AchievementsScreen(
     viewModel: AchievementsViewModel = hiltViewModel()
 ) {
     val progress by viewModel.progress.collectAsState()
-    LaunchedEffect(Unit) { viewModel.load() }
+    val errorMessage by viewModel.errorMessage.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.load()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
         WaveBackground(modifier = Modifier.fillMaxSize())
@@ -57,14 +69,27 @@ fun AchievementsScreen(
             },
             containerColor = Color.Transparent
         ) { padding ->
-            if (progress == null) {
+            if (isLoading) {
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = BreathePrimary)
                 }
                 return@Scaffold
             }
 
-            val p = progress!!
+            if (errorMessage != null) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(errorMessage.orEmpty(), textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { viewModel.load() }) { Text("Try again") }
+                }
+                return@Scaffold
+            }
+
+            val p = progress ?: return@Scaffold
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -76,9 +101,10 @@ fun AchievementsScreen(
 
                 // Level card
                 item { LevelCard(p) }
+                item { Text("Continue and Go back both count. Active days do not need to be consecutive. Levels now use your existing choice history rather than estimated time saved.", color = BreatheTextSecondary, fontSize = 13.sp) }
 
-                // Time saved summary
-                item { TimeSavedCard(p) }
+                // Observable progress summary
+                item { ProgressSummaryCard(p) }
 
                 // Level path
                 item {
@@ -158,9 +184,9 @@ private fun LevelCard(p: UserProgress) {
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                val needed = p.nextLevel.minMinutes - p.totalMinutesSaved
+                val needed = p.nextLevel.minDays - p.activeDays
                 Text(
-                    "${formatMinutes(needed)} until ${p.nextLevel.name} ${p.nextLevel.emoji}",
+                    "$needed more active ${if (needed == 1L) "day" else "days"} until ${p.nextLevel.name} ${p.nextLevel.emoji}",
                     fontSize = 12.sp, color = BreatheTextMuted, textAlign = TextAlign.Center
                 )
             }
@@ -169,7 +195,7 @@ private fun LevelCard(p: UserProgress) {
 }
 
 @Composable
-private fun TimeSavedCard(p: UserProgress) {
+private fun ProgressSummaryCard(p: UserProgress) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -180,9 +206,9 @@ private fun TimeSavedCard(p: UserProgress) {
             modifier = Modifier.fillMaxWidth().padding(20.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            TimeStat(value = p.hoursDisplay, label = "Time saved")
+            TimeStat(value = "${p.activeDays}", label = "Active days")
             Box(Modifier.width(1.dp).height(40.dp).background(BreatheDivider))
-            TimeStat(value = "${p.lifetimeDeclines}", label = "Resisted")
+            TimeStat(value = "${p.lifetimeChoices}", label = "Choices")
             Box(Modifier.width(1.dp).height(40.dp).background(BreatheDivider))
             TimeStat(value = "${p.badges.count { it.unlocked }}", label = "Badges")
         }
@@ -244,7 +270,7 @@ private fun LevelPath(currentIndex: Int) {
                             color = if (reached) BreatheTextPrimary else BreatheTextMuted
                         )
                         Text(
-                            formatMinutes(level.minMinutes),
+                            "${level.minDays} active ${if (level.minDays == 1L) "day" else "days"}",
                             fontSize = 11.sp,
                             color = BreatheTextMuted
                         )
@@ -315,11 +341,4 @@ private fun BadgeCard(badge: MilestoneBadge, modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-private fun formatMinutes(minutes: Long): String = when {
-    minutes <= 0   -> "unlocked"
-    minutes < 60   -> "${minutes}m"
-    minutes < 1440 -> "${minutes / 60}h"
-    else           -> "${minutes / 1440}d"
 }

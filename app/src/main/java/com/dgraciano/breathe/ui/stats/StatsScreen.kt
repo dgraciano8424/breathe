@@ -24,6 +24,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
@@ -35,10 +44,32 @@ fun StatsScreen(
     viewModel: StatsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val notice by viewModel.notice.collectAsState()
+    val working by viewModel.working.collectAsState()
+    val reducedMotion = rememberReducedMotion()
+    var confirmClear by remember { mutableStateOf(false) }
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { destination ->
+        destination?.let(viewModel::exportHistory)
+    }
     var showContent by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.loadStats()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (confirmClear) {
+        AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("Clear your history?") },
+            text = { Text("Delete all recorded choices and reset your progress and estimates? Your monitored apps and pause lengths stay saved. This cannot be undone. Export first if you want a copy.") },
+            confirmButton = { TextButton(onClick = { confirmClear = false; viewModel.clearHistory() }) { Text("Clear history") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Keep history") } })
+    }
 
     LaunchedEffect(Unit) {
-        viewModel.loadStats()
         showContent = true
     }
 
@@ -49,7 +80,7 @@ fun StatsScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text("Insights & Fulfillment", color = BreatheTextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("Your patterns", color = BreatheTextPrimary, fontWeight = FontWeight.SemiBold)
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -66,15 +97,29 @@ fun StatsScreen(
             containerColor = Color.Transparent
         ) { padding ->
             if (state.isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = BreathePrimary)
+                }
+                return@Scaffold
+            }
+
+            if (state.errorMessage != null) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(state.errorMessage.orEmpty(), textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { viewModel.loadStats() }) { Text("Try again") }
                 }
                 return@Scaffold
             }
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(tween(800)) + slideInVertically(tween(800)) { 50 }
+                enter = if (reducedMotion) EnterTransition.None else fadeIn(tween(250)),
+                exit = if (reducedMotion) ExitTransition.None else fadeOut(tween(150))
             ) {
                 Column(
                     modifier = Modifier
@@ -86,8 +131,8 @@ fun StatsScreen(
                 ) {
                     // Fulfillment Section
                     FulfillmentSection(
-                        streak = state.focusStreak,
-                        activity = state.lifeWonBackActivity,
+                        choices = state.todayAttempts,
+                        declined = state.todayDeclined,
                         minutesSaved = state.todayMinutesSaved
                     )
 
@@ -99,13 +144,13 @@ fun StatsScreen(
                         StatCard(
                             modifier = Modifier.weight(1f),
                             value = "${state.todayAttempts}",
-                            label = "Pauses",
+                            label = "Choices",
                             accent = BreathePrimary
                         )
                         StatCard(
                             modifier = Modifier.weight(1f),
                             value = "${state.todayDeclined}",
-                            label = "Resisted",
+                            label = "Went back",
                             accent = BreatheSecondary
                         )
                     }
@@ -113,11 +158,11 @@ fun StatsScreen(
                     SectionLabel("Weekly Growth")
                     StatCardLarge(
                         value = "${state.weeklyDeclined}",
-                        label = "Total times you chose presence over scrolling",
+                        label = "Times you chose to go back",
                         subtext = if (state.weeklyMinutesSaved > 0) {
-                            "That's ${formatDuration(state.weeklyMinutesSaved)} reclaimed this week."
+                            "Estimated skipped session time: ${formatDuration(state.weeklyMinutesSaved)} this week."
                         } else {
-                            "Your reclaimed time this week will appear here."
+                            "Your choices this week will appear here."
                         },
                         accent = BreatheSecondary
                     )
@@ -127,6 +172,14 @@ fun StatsScreen(
                         TopAppsCard(apps = state.topApps)
                     }
                     
+                    SectionLabel("Your history")
+                    Text("Export a CSV with app names, choice times and optional reasons. Choose where it is saved. Clearing history also resets your milestones.", color = BreatheTextSecondary, fontSize = 14.sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { export.launch("breathe-history-${java.time.LocalDate.now()}.csv") }, enabled = !working) { Text("Export history CSV") }
+                        TextButton(onClick = { confirmClear = true }, enabled = !working) { Text("Clear history") }
+                    }
+                    if (working) Text("Working on your history…", color = BreatheTextSecondary)
+                    notice?.let { Text(it, color = BreatheTextSecondary, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -135,9 +188,9 @@ fun StatsScreen(
 }
 
 @Composable
-fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
+fun FulfillmentSection(choices: Int, declined: Int, minutesSaved: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Focus Streak Card
+        // Recent choices Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -148,8 +201,8 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = BreathePrimary, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.width(16.dp))
                 Column {
-                    Text("Focus Streak", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BreatheTextPrimary)
-                    Text("$streak consecutive mindful choices", color = BreatheSecondary, fontSize = 14.sp)
+                    Text("Recent choices", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BreatheTextPrimary)
+                    Text("${(choices - declined).coerceAtLeast(0)} continued · $declined went back", color = BreatheSecondary, fontSize = 14.sp)
                 }
             }
         }
@@ -165,7 +218,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Icon(Icons.Default.NaturePeople, contentDescription = null, tint = BreatheSecondary, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.width(16.dp))
                 Column {
-                    Text("Time Won Back", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
+                    Text("Estimated skipped session time", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = BreatheTextPrimary)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = if (minutesSaved > 0) formatDuration(minutesSaved) else "Nothing yet today",
@@ -175,10 +228,10 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = if (minutesSaved > 0 && activity.isNotEmpty()) {
-                            "Reclaimed today — enough to $activity."
+                        text = if (minutesSaved > 0) {
+                            "These estimates stay separate from your milestones."
                         } else {
-                            "Resist a distraction and your reclaimed time shows up here."
+                            "An estimate appears after you choose to go back."
                         },
                         color = BreatheTextSecondary,
                         fontSize = 14.sp,
@@ -189,7 +242,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
         }
         
         Text(
-            text = "Tip: High-dopamine scrolling creates 'attention residue'. Even a 5-minute walk clears your mind more than 50 minutes of scrolling.",
+            text = "These are estimates based on past app sessions, or a 20-minute fallback when no history is available. Breathe cannot measure what you do after going back. Continuing can be an intentional choice too.",
             fontSize = 12.sp,
             color = BreatheTextMuted,
             fontStyle = FontStyle.Italic,
@@ -307,7 +360,7 @@ private fun TopAppsCard(apps: List<AppStat>) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(app.appName, fontSize = 14.sp, color = BreatheTextPrimary, fontWeight = FontWeight.Medium)
-                        Text("${app.count} pauses", fontSize = 12.sp, color = BreatheTextMuted)
+                        Text("${app.count} ${if (app.count == 1) "choice" else "choices"}", fontSize = 12.sp, color = BreatheTextMuted)
                     }
                     Spacer(Modifier.height(6.dp))
                     Box(

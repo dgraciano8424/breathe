@@ -19,7 +19,7 @@ val BreatheDivider      = Color(0x33E0F7FA)
 
 val BreatheTextPrimary   = OceanFoam
 val BreatheTextSecondary = Color(0xFFB2DFDB)
-val BreatheTextMuted     = Color(0xFF78909C)
+val BreatheTextMuted     = Color(0xFFD4E1E4)
 
 val BreatheSand          = Color(0xFFF1E3D3) // Sandy accent color for tips/highlights
 

@@ -1,9 +1,5 @@
 package com.dgraciano.breathe.ui.appselect
 
-import android.app.usage.UsageStatsManager
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -11,25 +7,25 @@ import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.repository.AppRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 data class InstalledApp(
     val packageName: String,
     val appName: String,
     val icon: Drawable? = null,
-    val usageTimeMinutes: Int = 0,
+    val usageTimeMinutes: Int? = null,
     val isBlocked: Boolean = false
 )
 
 @HiltViewModel
 class AppSelectViewModel @Inject constructor(
     private val repo: AppRepository,
-    @ApplicationContext private val context: Context
+    private val installedAppsLoader: InstalledAppsLoader
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -55,70 +51,61 @@ class AppSelectViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
+    private val _savingPackages = MutableStateFlow<Set<String>>(emptySet())
+    val savingPackages: StateFlow<Set<String>> = _savingPackages
+    private val messages = Channel<String>(Channel.BUFFERED)
+    val feedback = messages.receiveAsFlow()
+    private var loadJob: Job? = null
+
     init { loadInstalledApps() }
 
     fun loadInstalledApps() {
-        viewModelScope.launch(Dispatchers.IO) {
+        if (loadJob?.isActive == true || _savingPackages.value.isNotEmpty()) return
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                _allApps.value = queryInstalledApps()
+                val blocked = repo.getAllBlockedPackageNames().toSet()
+                _allApps.value = installedAppsLoader.load().map {
+                    it.copy(isBlocked = it.packageName in blocked)
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Could not list installed apps", e)
-                _errorMessage.value = "Couldn't load your apps. Pull to try again."
+                _errorMessage.value = "Couldn't load your apps. Tap Try again to reload."
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    private suspend fun queryInstalledApps(): List<InstalledApp> {
-        val pm = context.packageManager
-        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val alreadyBlocked = repo.getAllBlockedPackageNames().toSet()
-
-        // Get stats for the last 7 days
-        val now = System.currentTimeMillis()
-        val start = now - TimeUnit.DAYS.toMillis(7)
-        val stats = usageStatsManager.queryAndAggregateUsageStats(start, now)
-
-        // Get ALL launcher activities
-        val mainIntent = Intent(Intent.ACTION_MAIN, null)
-        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-        val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
-
-        return resolveInfos.map { info ->
-            val pkg = info.activityInfo.packageName
-            val totalTime = stats[pkg]?.totalTimeInForeground ?: 0L
-            InstalledApp(
-                packageName = pkg,
-                appName = info.loadLabel(pm).toString(),
-                icon = runCatching { info.loadIcon(pm) }.getOrNull(),
-                usageTimeMinutes = (totalTime / 60000).toInt(),
-                isBlocked = pkg in alreadyBlocked
-            )
-        }
-            .distinctBy { it.packageName }
-            .filter { it.packageName != context.packageName }
-            .sortedByDescending { it.usageTimeMinutes }
-    }
-
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
     }
 
-    fun toggleBlock(app: InstalledApp) = viewModelScope.launch {
-        if (app.isBlocked) {
-            repo.unblockApp(BlockedApp(packageName = app.packageName, appName = app.appName))
-        } else {
-            repo.blockApp(BlockedApp(packageName = app.packageName, appName = app.appName))
-        }
-        
-        // Update local state immediately
-        _allApps.update { current ->
-            current.map {
-                if (it.packageName == app.packageName) it.copy(isBlocked = !app.isBlocked)
-                else it
+    fun toggleBlock(app: InstalledApp) {
+        if (_isLoading.value || app.packageName in _savingPackages.value) return
+        // Use current state, even if a click callback holds an older row instance.
+        val current = _allApps.value.find { it.packageName == app.packageName } ?: return
+        _savingPackages.update { it + current.packageName }
+        viewModelScope.launch {
+            try {
+                val entity = BlockedApp(packageName = current.packageName, appName = current.appName)
+                if (current.isBlocked) repo.unblockApp(entity) else repo.blockApp(entity)
+                _allApps.update { list ->
+                    list.map {
+                        if (it.packageName == current.packageName) it.copy(isBlocked = !current.isBlocked)
+                        else it
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not change monitored app", e)
+                messages.send("Couldn't save the change for ${current.appName}. Tap the app to try again.")
+            } finally {
+                _savingPackages.update { it - current.packageName }
             }
         }
     }
