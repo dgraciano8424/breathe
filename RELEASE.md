@@ -160,3 +160,13 @@ None of this has been run on real hardware. In rough order of risk:
 8. **Onboarding on an older device** (API 26–28) if you can find one, since that
    path had an API-level crash that was only recently fixed. This path changed with
    the accessibility rewrite — the prominent disclosure and consent flow are new.
+
+## Timed break checks
+
+- Start each 15/30/60-minute break; confirm Home shows its resume time and Test a pause is disabled. Monitored apps should open without an overlay.
+- Start a break with a pause pending (for example, from split screen). Confirm the overlay dismisses without recording Continue or Go back. Check the fallback pause Activity as well: it should close while snoozed and reject a new pause intent.
+- Resume early and revisit a monitored app. Confirm a fresh pause and no leftover visit approval.
+- Let the deadline expire, then revisit a monitored app. Confirm a pause; an app already open is not forcibly interrupted by the timer.
+- Restart Breathe, let Android recreate the accessibility service, and reboot during a break. Confirm the saved deadline survives and an expired deadline does not disable pauses.
+- Test screen sleep through expiry, forward/backward device-clock changes, missing overlay/accessibility permissions, large text and screen-reader labels. Changing the device clock changes the deadline behavior.
+- Failed saves should retain the previous status and allow retry; app selection and history should remain intact.

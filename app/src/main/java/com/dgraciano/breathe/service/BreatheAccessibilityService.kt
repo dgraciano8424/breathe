@@ -46,9 +46,11 @@ class BreatheAccessibilityService : AccessibilityService() {
     @Inject lateinit var sessionApprovalStore: SessionApprovalStore
     @Inject lateinit var pauseOverlayHost: PauseOverlayHost
     @Inject lateinit var monitoringStatus: MonitoringStatus
+    @Inject lateinit var snoozeStore: SnoozeStore
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var blockedAppsJob: Job? = null
+    private var snoozeJob: Job? = null
 
     /** Mirrors the blocked table so the event path never touches the database. */
     @Volatile
@@ -78,6 +80,14 @@ class BreatheAccessibilityService : AccessibilityService() {
             ContextCompat.registerReceiver(this, screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
             receiverRegistered = true
         }
+        if (snoozeJob?.isActive != true) {
+            snoozeJob = scope.launch {
+                snoozeStore.deadline.collect { until ->
+                    if (until > 0) resetVisit()
+                    else { sessionApprovalStore.clear(); visits.reset() }
+                }
+            }
+        }
         if (blockedAppsJob?.isActive == true) { monitoringStatus.loaded(); return }
         blockedAppsJob = scope.launch {
             appRepository.getBlockedApps().collect { apps ->
@@ -94,6 +104,7 @@ class BreatheAccessibilityService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val current = event.packageName?.toString() ?: return
+        if (snoozeStore.isSnoozed()) { resetVisit(); return }
         // Our overlay emits our package name too; only the real MainActivity is a
         // departure. A keyboard or notification shade is not a new app visit.
         val transient = current in transientPackages ||
@@ -133,6 +144,8 @@ class BreatheAccessibilityService : AccessibilityService() {
         resetVisit()
         blockedAppsJob?.cancel()
         blockedAppsJob = null
+        snoozeJob?.cancel()
+        snoozeJob = null
         monitoringStatus.disconnected()
         if (receiverRegistered) {
             unregisterReceiver(screenOffReceiver)

@@ -12,15 +12,25 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.dgraciano.breathe.ui.theme.BreatheTheme
+import com.dgraciano.breathe.service.SnoozeStore
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class PauseActivity : ComponentActivity() {
 
+    @Inject lateinit var snoozeStore: SnoozeStore
+
     private val viewModel: PauseViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (snoozeStore.isSnoozed()) { finish(); return }
+        lifecycleScope.launch {
+            snoozeStore.deadline.collect { until -> if (until > 0) finish() }
+        }
 
         // Show over the lock screen
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -73,6 +83,7 @@ class PauseActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (snoozeStore.isSnoozed()) { finish(); return }
         val blockedPackage = intent.getStringExtra(EXTRA_PACKAGE) ?: ""
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: blockedPackage
         viewModel.init(blockedPackage, appName)

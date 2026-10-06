@@ -29,14 +29,14 @@ Keep the offline Android foundation: Kotlin, Compose, Room, narrow accessibility
 
 ## Verification
 
-- Chrome: 23 unit tests, 16 installed-extension Chromium tests, TypeScript, production build and ZIP pass. Tests cover countdowns, exact destinations, tab-scoped approvals, permissions, failed saves, backup/undo, pending-pause release, early/expiry alarms and snooze controls in both interfaces. A startup options-navigation race in the browser harness was fixed by waiting for the install handler. Native Chrome permission accept/deny dialogs remain a manual release check.
-- Android: 65 JVM tests, debug APK and normal lintDebug pass. Lint has zero errors and 48 warnings, including existing dependency/toolchain and unused-resource warnings. The Python standard-library progress SQL check passes empty history, duplicate-day choices and nonconsecutive legacy history with estimated savings retained separately.
+- Chrome: 24 unit tests, 18 installed-extension Chromium tests, TypeScript, production build and ZIP pass. Tests cover countdowns, exact destinations, tab-scoped approvals, permissions, failed saves, backup/undo, pending-pause release, early/expiry alarms and snooze controls in both interfaces. A startup options-navigation race in the browser harness was fixed by waiting for the install handler. Native Chrome permission accept/deny dialogs remain a manual release check.
+- Android: 74 JVM tests, debug APK and normal lintDebug pass. Lint has zero errors and 48 warnings, including existing dependency/toolchain and unused-resource warnings. The Python standard-library progress SQL check passes empty history, duplicate-day choices and nonconsecutive legacy history with estimated savings retained separately.
 - Read-only Pixel emulator: confirmed chosen-app testing opens the overlay; notification shade preserves it; Home and screen-off remove it; reopening can pause again; Continue and hardware Back each record a choice. Home showed two choices, one Go back and one active day. Monitoring details showed connection/loading/last displayed pause. Permission-loss/recovery states were inspected. No accessibility service crash appeared in these checks.
 
 ## Remaining improvements
 
 1. Unify the visual language. Chrome uses cream and sage; Android uses an ocean palette with a static gradient. Continue verifying large fonts and reduced motion on every screen before changing its whole theme.
-2. Add Android timed pause-all and clearer support instructions. Keep control local; accounts/cloud synchronization are unnecessary for the core flow.
+2. Improve Android support instructions. Keep control local; accounts/cloud synchronization are unnecessary for the core flow.
 3. Verify physical-phone behavior: app switching, keyboard changes, notification shade, lock/unlock, split screen, overlay revocation and OEM battery restrictions. Test database upgrades from older releases before store publication. Emulator checks do not establish behavior on every phone.
 
 Accessibility window events cannot guarantee intervention before an app displays or loads content. Chrome handles new top-level HTTP/HTTPS GET visits; already loaded tab activation, SPA routing and some history/cache restores remain outside interception. Android APK is a debug test build, not a signed store release. Both changes remain in draft pull requests.
@@ -50,3 +50,18 @@ Android now exports UTF-8 history CSV through the system file picker, with confi
 Chrome 0.4.0 adds website search with a no-match state, aggregate statistics CSV export and today's Continue count in the popup. Browser tests verify filtering preserves stored sites and exported counts exclude domains/URLs.
 
 This pass checked Android's real file-picker export and clear-history dialog on a read-only emulator, with 1.5x text layouts inspected. Physical-phone testing remains deferred. Android lint has zero errors and 48 warnings.
+
+
+## Chrome appearance update
+
+Chrome 0.5.0 adds System, Light and Dark appearance for settings, the popup and the pause screen. System is the default for existing installations. Open pages update live; changes preserve pending countdowns, per-tab approvals, website settings and statistics. The preference stays local and is separate from the existing website/duration settings backup format.
+
+The browser suite covers live system changes, manual overrides, reload persistence, failed saves/retry and rejection of appearance mutations from pause pages. Light/dark screenshots are included in the Chrome output folder. Main text, muted text, primary labels, notices and orb text pass 4.5:1 contrast for the checked palette combinations. The latest build has 24 unit tests and 18 browser tests, with TypeScript and ZIP verification.
+
+## Android timed breaks
+
+Home now offers 15/30/60-minute snooze and Resume now. A locally saved deadline survives process/service recreation and reboot, with explicit backup/transfer exclusions for the temporary setting. Starting a break dismisses pending overlays and closes the fallback pause Activity, then clears approvals without recording a choice. App selections, durations, permissions and history stay intact. Test a pause is disabled while snoozed, while setup/service problems remain visible.
+
+Accessibility events check the deadline directly, so a timer delayed by sleep cannot keep new visits snoozed after expiry. Returning to Home also refreshes expiry immediately. Observed timers update open screens. There is no exact alarm, boot receiver, foreground service or new permission. Timer expiry permits future detected visits to pause; it does not interrupt an already open app. Device-clock changes affect the deadline.
+
+New unit tests cover supported/invalid durations, persisted restart state, expiry, early resume, replacement of an older timer, sleep-like clock jumps, failed saves/resume, retry and Home actions preserving selected apps. This pass does not include device or emulator validation of the new controls; physical-phone testing stays deferred. RELEASE.md lists the required snooze checks.

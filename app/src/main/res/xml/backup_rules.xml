@@ -6,6 +6,7 @@
     they gave in. That should not leave the device.
 -->
 <full-backup-content>
+    <exclude domain="sharedpref" path="breathe_snooze.xml" />
     <exclude domain="database" path="breathe.db" />
     <exclude domain="database" path="breathe.db-shm" />
     <exclude domain="database" path="breathe.db-wal" />

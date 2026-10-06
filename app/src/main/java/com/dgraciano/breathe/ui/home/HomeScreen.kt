@@ -58,6 +58,9 @@ fun HomeScreen(
     val isMonitoringActive by viewModel.isMonitoringActive.collectAsState()
     val permissions by viewModel.permissions.collectAsState()
     val monitoring by viewModel.monitoring.collectAsState()
+    val snoozedUntil by viewModel.snoozedUntil.collectAsState()
+    val snoozeBusy by viewModel.snoozeBusy.collectAsState()
+    val snoozeError by viewModel.snoozeError.collectAsState()
     val context = LocalContext.current
     var showTestPicker by remember { mutableStateOf(false) }
     var testError by remember { mutableStateOf<String?>(null) }
@@ -76,6 +79,8 @@ fun HomeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    LaunchedEffect(snoozedUntil) { if (snoozedUntil > 0) showTestPicker = false }
 
     if (showTestPicker) {
         AlertDialog(
@@ -153,11 +158,15 @@ fun HomeScreen(
             ) {
                 item {
                     MonitoringCard(
-                        access = permissions, status = monitoring, ready = isMonitoringActive,
+                        access = permissions, status = monitoring, ready = isMonitoringActive, snoozed = snoozedUntil > 0,
                         hasApps = apps.isNotEmpty(), onFix = onFixPermissions,
                         onTest = { testError = null; showTestPicker = true },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
+                }
+
+                item {
+                    SnoozeCard(snoozedUntil, snoozeBusy, snoozeError, viewModel::snooze, viewModel::resumePauses)
                 }
 
                 item {
@@ -288,6 +297,7 @@ private fun MonitoringCard(
     access: MonitoringPermissions,
     status: MonitoringSnapshot,
     ready: Boolean,
+    snoozed: Boolean,
     hasApps: Boolean,
     onFix: () -> Unit,
     onTest: () -> Unit,
@@ -302,7 +312,7 @@ private fun MonitoringCard(
             .padding(18.dp)
     ) {
         Text(
-            if (ready && status.issue == null) "MONITORING IS READY" else if (!access.accessibility || !access.overlay) "SETUP NEEDED" else "CHECK MONITORING",
+            if (snoozed && ready) "PAUSES ARE SNOOZED" else if (ready && status.issue == null) "MONITORING IS READY" else if (!access.accessibility || !access.overlay) "SETUP NEEDED" else "CHECK MONITORING",
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = BreatheSand,
@@ -310,14 +320,16 @@ private fun MonitoringCard(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            if (ready) "Your pause is ready to try" else if (!access.accessibility || !access.overlay) "Breathe needs both permissions" else "Android has not confirmed a working connection",
+            if (snoozed && ready) "You are taking a break" else if (ready) "Your pause is ready to try" else if (!access.accessibility || !access.overlay) "Breathe needs both permissions" else "Android has not confirmed a working connection",
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
             color = BreatheTextPrimary
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            status.issue ?: if (ready) {
+            status.issue ?: if (snoozed && ready) {
+                "Your app list and permissions stay saved. Resume below when you are ready."
+            } else if (ready) {
                 if (hasApps) "Try opening one of your chosen apps to confirm a pause appears." else "Add one app below, then test your pause."
             } else if (!access.accessibility || !access.overlay) {
                 "Check both permissions in setup. Your chosen apps and history are saved."
@@ -329,7 +341,7 @@ private fun MonitoringCard(
             color = BreatheTextSecondary
         )
         FlowRow {
-            TextButton(onClick = onTest, enabled = ready && hasApps) { Text("Test a pause") }
+            TextButton(onClick = onTest, enabled = ready && hasApps && !snoozed) { Text("Test a pause") }
             TextButton(onClick = onFix) { Text("Check setup") }
             TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
         }
@@ -606,5 +618,34 @@ private fun formatUsage(minutes: Int): String {
     return when {
         h > 0 -> "$h h $m m spent this week"
         else -> "$m m spent this week"
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SnoozeCard(until: Long, busy: Boolean, error: String?, onSnooze: (Int) -> Unit, onResume: () -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp)).background(BreatheSurface.copy(alpha = 0.7f)).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Take a break", fontWeight = FontWeight.SemiBold, color = BreatheTextPrimary)
+        Text(
+            if (until > 0) "Pauses resume at ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(until))}."
+            else "Snooze all app pauses for a little while. Your app list and history stay saved.",
+            color = BreatheTextSecondary, fontSize = 13.sp
+        )
+        if (until > 0) {
+            OutlinedButton(onClick = onResume, enabled = !busy) { Text("Resume now") }
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(15, 30, 60).forEach { minutes ->
+                    OutlinedButton(onClick = { onSnooze(minutes) }, enabled = !busy) {
+                        Text(if (minutes == 60) "1 hour" else "$minutes minutes")
+                    }
+                }
+            }
+        }
+        error?.let { Text(it, color = BreatheTextSecondary, fontSize = 13.sp) }
     }
 }

@@ -12,6 +12,7 @@ import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.BreatheAccessibilityService
 import com.dgraciano.breathe.service.MonitoringStatus
+import com.dgraciano.breathe.service.SnoozeStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -36,7 +37,8 @@ class HomeViewModel @Inject constructor(
     private val usageStatsManager: UsageStatsManager,
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
-    private val monitoringStatus: MonitoringStatus
+    private val monitoringStatus: MonitoringStatus,
+    private val snoozeStore: SnoozeStore
 ) : ViewModel() {
 
     private val _blockedAppsWithStats = MutableStateFlow<List<BlockedAppWithStats>>(emptyList())
@@ -59,6 +61,24 @@ class HomeViewModel @Inject constructor(
 
     private val _permissions = MutableStateFlow(MonitoringPermissions())
     val permissions: StateFlow<MonitoringPermissions> = _permissions
+    val snoozedUntil = snoozeStore.deadline.stateIn(viewModelScope, SharingStarted.Eagerly, snoozeStore.currentDeadline)
+    private val _snoozeBusy = MutableStateFlow(false)
+    val snoozeBusy = _snoozeBusy.asStateFlow()
+    private val _snoozeError = MutableStateFlow<String?>(null)
+    val snoozeError = _snoozeError.asStateFlow()
+
+    fun snooze(minutes: Int) = updateSnooze { snoozeStore.snooze(minutes) }
+    fun resumePauses() = updateSnooze { snoozeStore.resume() }
+    private fun updateSnooze(action: suspend () -> Unit) = viewModelScope.launch {
+        if (_snoozeBusy.value) return@launch
+        _snoozeBusy.value = true
+        _snoozeError.value = null
+        try { action() }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (_: Exception) { _snoozeError.value = "Could not save that change. Try again." }
+        finally { _snoozeBusy.value = false }
+    }
+
     val monitoring = monitoringStatus.state
     val isMonitoringActive: StateFlow<Boolean> = combine(_permissions, monitoring) { access, status ->
         access.accessibility && access.overlay && status.connected && status.appsLoaded
@@ -118,6 +138,7 @@ class HomeViewModel @Inject constructor(
      * previously left every screen silently showing zeros.
      */
     fun refreshMonitoringState() {
+        snoozeStore.refreshExpiry()
         _permissions.value = MonitoringPermissions(BreatheAccessibilityService.isEnabled(context), Settings.canDrawOverlays(context))
     }
 

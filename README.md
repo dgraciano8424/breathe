@@ -17,6 +17,10 @@ Leaving an app clears its approval and dismisses an outstanding pause. Turning t
 
 Home shows accessibility permission, live service connection, overlay permission and app-list loading separately. Use **Test a pause** to open one of your monitored apps, or **Details** to see the last successfully displayed overlay in this process. A permission grant alone does not prove a working connection.
 
+Home also offers **Take a break**: snooze all app pauses for 15 minutes, 30 minutes or 1 hour, or choose **Resume now**. Starting a snooze dismisses a pending overlay and clears visit approvals without recording a choice. Your monitored apps, pause lengths, permission grants and history stay saved. The deadline is stored locally and survives process restarts and reboot. When it expires, future detected visits can pause again; Breathe does not interrupt an already open app just because the timer expires.
+
+Snooze uses the device clock. Changing that clock can change when it ends. No exact-alarm or foreground-service permission is added: the accessibility event path checks the deadline directly, including after sleep, while open screens update their status from an observed timer. Permission or service failures can still prevent monitoring after a snooze ends.
+
 Levels use distinct calendar days with recorded choices, and badges use days and choice totals. Both Continue and Go back count. Days do not have to be consecutive. Progress is recalculated from existing local history; no database schema change or history deletion is needed. Estimated skipped session time remains separate from achievements.
 
 ---
