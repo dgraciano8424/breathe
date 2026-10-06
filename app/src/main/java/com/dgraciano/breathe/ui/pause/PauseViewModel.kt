@@ -150,7 +150,7 @@ class PauseViewModel @Inject constructor(
         runCatching { statsRepo.recordEvent(event) }
             .onSuccess { widgetRefresher.refresh() }
             .onFailure {
-                Log.e(TAG, "Failed to record ${event.outcome} for ${event.packageName}", it)
+                Log.e(TAG, "Failed to record a pause choice")
             }
     }
 

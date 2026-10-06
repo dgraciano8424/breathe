@@ -163,3 +163,7 @@ MIT
 Your patterns includes Export history CSV and a confirmed Clear history action. The system file picker chooses where the UTF-8 CSV is saved. It includes timestamps, app names/packages, choices, optional reasons and estimated skipped minutes. Clearing resets recorded choices, milestones and estimates while keeping monitored apps and durations. Exported files remain wherever you saved them.
 
 The ocean background is static. Reduced motion follows Android's animator setting, and monitored-app controls can wrap at larger font sizes.
+
+## Security and release readiness
+
+See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the reviewed boundaries, dependency checks, hardening and remaining release work. Passing builds and automated tests do not replace physical-device, database-upgrade and final signed-release validation.

@@ -170,3 +170,6 @@ None of this has been run on real hardware. In rough order of risk:
 - Restart Breathe, let Android recreate the accessibility service, and reboot during a break. Confirm the saved deadline survives and an expired deadline does not disable pauses.
 - Test screen sleep through expiry, forward/backward device-clock changes, missing overlay/accessibility permissions, large text and screen-reader labels. Changing the device clock changes the deadline behavior.
 - Failed saves should retain the previous status and allow retry; app selection and history should remain intact.
+
+- Verify widget placement, refresh after a choice/history clear, tap-to-open and removal with the non-exported receiver. Ordinary other apps must not be able to send it an update broadcast.
+- Inspect production logs after a controlled failed history write; the marker must not include a monitored app identifier, outcome, reason or exception details.
