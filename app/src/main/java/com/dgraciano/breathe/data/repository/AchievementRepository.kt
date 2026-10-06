@@ -11,17 +11,18 @@ class AchievementRepository @Inject constructor(
     private val dao: InterventionEventDao
 ) {
     suspend fun getUserProgress(): UserProgress {
-        val totalMinutes = dao.getTotalMinutesSaved()
-        val declines     = dao.getLifetimeDeclined()
-        val level        = Achievements.computeLevel(totalMinutes)
+        val totals = dao.getProgressTotals()
+        val level        = Achievements.computeLevel(totals.activeDays)
         val next         = Achievements.nextLevel(level)
         return UserProgress(
-            totalMinutesSaved = totalMinutes,
-            lifetimeDeclines  = declines,
+            totalMinutesSaved = totals.estimatedMinutes,
+            lifetimeDeclines  = totals.declined,
+            activeDays = totals.activeDays,
+            lifetimeChoices = totals.choices,
             currentLevel      = level,
             nextLevel         = next,
-            progressToNext    = Achievements.progressToNext(totalMinutes, level, next),
-            badges            = Achievements.computeBadges(totalMinutes, declines)
+            progressToNext    = Achievements.progressToNext(totals.activeDays, level, next),
+            badges            = Achievements.computeBadges(totals.choices, totals.activeDays)
         )
     }
 }

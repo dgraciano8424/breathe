@@ -11,6 +11,7 @@ import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.BreatheAccessibilityService
+import com.dgraciano.breathe.service.MonitoringStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,6 +26,8 @@ data class BlockedAppWithStats(
     val usageMinutes: Int
 )
 
+data class MonitoringPermissions(val accessibility: Boolean = false, val overlay: Boolean = false)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repo: AppRepository,
@@ -32,7 +35,8 @@ class HomeViewModel @Inject constructor(
     private val achievementRepo: AchievementRepository,
     private val usageStatsManager: UsageStatsManager,
     @ApplicationContext private val context: Context,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val monitoringStatus: MonitoringStatus
 ) : ViewModel() {
 
     private val _blockedAppsWithStats = MutableStateFlow<List<BlockedAppWithStats>>(emptyList())
@@ -53,9 +57,12 @@ class HomeViewModel @Inject constructor(
     private val _nimbusStrength = MutableStateFlow(1)
     val nimbusStrength: StateFlow<Int> = _nimbusStrength
 
-    /** False when the accessibility service is off or overlay permission was revoked. */
-    private val _isMonitoringActive = MutableStateFlow(false)
-    val isMonitoringActive: StateFlow<Boolean> = _isMonitoringActive
+    private val _permissions = MutableStateFlow(MonitoringPermissions())
+    val permissions: StateFlow<MonitoringPermissions> = _permissions
+    val monitoring = monitoringStatus.state
+    val isMonitoringActive: StateFlow<Boolean> = combine(_permissions, monitoring) { access, status ->
+        access.accessibility && access.overlay && status.connected && status.appsLoaded
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
      * Per-package foreground minutes over the last 7 days, refreshed on its own schedule
@@ -111,8 +118,7 @@ class HomeViewModel @Inject constructor(
      * previously left every screen silently showing zeros.
      */
     fun refreshMonitoringState() {
-        _isMonitoringActive.value =
-            BreatheAccessibilityService.isEnabled(context) && Settings.canDrawOverlays(context)
+        _permissions.value = MonitoringPermissions(BreatheAccessibilityService.isEnabled(context), Settings.canDrawOverlays(context))
     }
 
     fun refreshStats() {

@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -24,6 +26,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import java.text.DateFormat
+import java.util.Date
+import com.dgraciano.breathe.service.MonitoringSnapshot
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -49,6 +56,11 @@ fun HomeScreen(
     val nimbusStrength by viewModel.nimbusStrength.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val isMonitoringActive by viewModel.isMonitoringActive.collectAsState()
+    val permissions by viewModel.permissions.collectAsState()
+    val monitoring by viewModel.monitoring.collectAsState()
+    val context = LocalContext.current
+    var showTestPicker by remember { mutableStateOf(false) }
+    var testError by remember { mutableStateOf<String?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Both permissions are revoked from Settings, which does not take this screen out of
@@ -63,6 +75,30 @@ fun HomeScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (showTestPicker) {
+        AlertDialog(
+            onDismissRequest = { showTestPicker = false },
+            title = { Text("Test your pause") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Choose an app to open. A breathing pause should appear over it. This is a real visit; you can go back immediately.")
+                    apps.forEach { row ->
+                        TextButton(onClick = {
+                            val launched = runCatching {
+                                val intent = context.packageManager.getLaunchIntentForPackage(row.app.packageName)
+                                    ?: error("Unavailable")
+                                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }.isSuccess
+                            if (launched) showTestPicker = false else testError = "That app could not be opened. Try another app."
+                        }) { Text(row.app.appName) }
+                    }
+                    testError?.let { Text(it) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTestPicker = false }) { Text("Cancel") } }
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
@@ -115,15 +151,13 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                // First, and above everything else: if monitoring is off, no other number
-                // on this screen means what it appears to mean.
-                if (!isMonitoringActive) {
-                    item {
-                        MonitoringOffCard(
-                            onFix = onFixPermissions,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
-                    }
+                item {
+                    MonitoringCard(
+                        access = permissions, status = monitoring, ready = isMonitoringActive,
+                        hasApps = apps.isNotEmpty(), onFix = onFixPermissions,
+                        onTest = { testError = null; showTestPicker = true },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
                 }
 
                 item {
@@ -244,32 +278,30 @@ fun HomeScreen(
     }
 }
 
-/** Prominent entry point into the achievements ("Your Journey") screen. */
 /**
- * Shown when accessibility or overlay permission is missing.
- *
- * Without both, no pause can appear — and because everything else on this screen is a
- * count of past pauses, the app otherwise looks like it is working and simply has nothing
- * to report yet. This says the quiet part out loud.
- *
- * Tapping returns to onboarding rather than jumping straight to Settings, so the
- * accessibility disclosure and consent step are not bypassed.
+ * Shows permission grants separately from the live service and app-list connection.
+ * Setup returns through the accessibility disclosure; testing opens a chosen app.
  */
 @Composable
-private fun MonitoringOffCard(
+private fun MonitoringCard(
+    access: MonitoringPermissions,
+    status: MonitoringSnapshot,
+    ready: Boolean,
+    hasApps: Boolean,
     onFix: () -> Unit,
+    onTest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var details by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(BreatheSand.copy(alpha = 0.14f))
-            .clickable { onFix() }
             .padding(18.dp)
     ) {
         Text(
-            "MONITORING IS OFF",
+            if (ready && status.issue == null) "MONITORING IS READY" else if (!access.accessibility || !access.overlay) "SETUP NEEDED" else "CHECK MONITORING",
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = BreatheSand,
@@ -277,19 +309,34 @@ private fun MonitoringOffCard(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Breathe cannot pause anything right now",
+            if (ready) "Your pause is ready to try" else if (!access.accessibility || !access.overlay) "Breathe needs both permissions" else "Android has not confirmed a working connection",
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
             color = BreatheTextPrimary
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "A permission it needs was turned off. Some phones do this on their own to " +
-                "save battery. Tap to check the setup.",
+            status.issue ?: if (ready) {
+                if (hasApps) "Try opening one of your chosen apps to confirm a pause appears." else "Add one app below, then test your pause."
+            } else if (!access.accessibility || !access.overlay) {
+                "Check both permissions in setup. Your chosen apps and history are saved."
+            } else if (!status.connected) {
+                "The permission is enabled, but the service is disconnected. Check setup and switch Breathe off and on in Accessibility settings."
+            } else "Your chosen apps are loading. Reopen Breathe if this does not finish.",
             fontSize = 13.sp,
             lineHeight = 18.sp,
             color = BreatheTextSecondary
         )
+        Row {
+            TextButton(onClick = onTest, enabled = ready && hasApps) { Text("Test a pause") }
+            TextButton(onClick = onFix) { Text("Check setup") }
+            TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
+        }
+        if (details) {
+            Text("Accessibility permission: ${if (access.accessibility) "on" else "off"}\nService connection: ${if (status.connected) "connected" else "disconnected"}\nDisplay over other apps: ${if (access.overlay) "allowed" else "needed"}\nApp list: ${if (status.appsLoaded) "loaded" else "waiting"}", fontSize = 12.sp, color = BreatheTextSecondary)
+            Text(status.lastPauseAt?.let { "Last pause shown: ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))}" }
+                ?: "No pause has been confirmed in this app session yet.", fontSize = 12.sp, color = BreatheTextSecondary)
+        }
     }
 }
 
@@ -368,9 +415,9 @@ private fun JourneyCard(
 }
 
 private fun nextLevelLabel(progress: UserProgress): String {
-    val next = progress.nextLevel ?: return "Highest level reached — ${progress.hoursDisplay} estimated skipped session time"
-    val remaining = (next.minMinutes - progress.totalMinutesSaved).coerceAtLeast(0)
-    return "${formatMinutes(remaining)} of mindful time until ${next.name}"
+    val next = progress.nextLevel ?: return "${progress.activeDays} active days — your rhythm keeps growing"
+    val remaining = (next.minDays - progress.activeDays).coerceAtLeast(0)
+    return "$remaining more active ${if (remaining == 1L) "day" else "days"} until ${next.name}"
 }
 
 /** Entry point into the stats ("Insights & Fulfillment") screen. */
@@ -391,7 +438,7 @@ private fun InsightsCard(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                "INSIGHTS & FULFILLMENT",
+                "YOUR PATTERNS",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheSecondary,
@@ -399,14 +446,14 @@ private fun InsightsCard(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = progress?.let { "${it.hoursDisplay} estimated skipped session time so far" } ?: "See your progress",
+                text = progress?.let { "${it.activeDays} active ${if (it.activeDays == 1L) "day" else "days"} · ${it.lifetimeChoices} ${if (it.lifetimeChoices == 1L) "choice" else "choices"}" } ?: "See your progress",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = BreatheTextPrimary
             )
             if (progress != null) {
                 Text(
-                    text = "${progress.lifetimeDeclines} mindful choices made",
+                    text = "Continue and Go back both count",
                     fontSize = 13.sp,
                     color = BreatheTextSecondary
                 )
@@ -438,7 +485,7 @@ private fun TodaySummaryCard(
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SummaryItem(value = "$attempts", label = "Pauses today")
+        SummaryItem(value = "$attempts", label = "Choices today")
         Box(
             modifier = Modifier
                 .width(1.dp)
@@ -452,7 +499,7 @@ private fun TodaySummaryCard(
                 .height(36.dp)
                 .background(BreatheDivider)
         )
-        SummaryItem(value = formatMinutes(minutesSaved.toLong()), label = "Saved")
+        SummaryItem(value = formatMinutes(minutesSaved.toLong()), label = "Estimated time")
     }
 }
 

@@ -13,7 +13,11 @@ Built as a free alternative to [One Sec](https://one-sec.app), using only public
 3. The screen shows a breathing animation, an optional grounding tip, an optional "why am I opening this?" prompt, and two buttons
 4. **No, go back** → sends you home. **Yes, open [App]** → lets you through
 
-The pause resets each time you leave and re-open the app, so it shows every time — the friction is the feature.
+Leaving an app clears its approval and dismisses an outstanding pause. Turning the screen off also clears approvals. Keyboard windows and the notification shade preserve the underlying visit. Detection depends on Android delivering a window-state event; it cannot guarantee interception before app content appears.
+
+Home shows accessibility permission, live service connection, overlay permission and app-list loading separately. Use **Test a pause** to open one of your monitored apps, or **Details** to see the last successfully displayed overlay in this process. A permission grant alone does not prove a working connection.
+
+Levels use distinct calendar days with recorded choices, and badges use days and choice totals. Both Continue and Go back count. Days do not have to be consecutive. Progress is recalculated from existing local history; no database schema change or history deletion is needed. Estimated skipped session time remains separate from achievements.
 
 ---
 
@@ -48,7 +52,7 @@ app/src/main/java/com/dgraciano/breathe/
     ├── home/        # Monitored apps list
     ├── appselect/   # App picker
     ├── pause/       # The breathing screen (PauseOverlayHost + PauseActivity + PauseScreen)
-    ├── stats/       # Insights and time reclaimed
+    ├── stats/       # Recorded choices and estimated skipped session time
     ├── achievements/# Progress path
     ├── nav/         # Compose navigation graph
     └── theme/       # Colors, Theme
@@ -62,9 +66,8 @@ app/src/main/java/com/dgraciano/breathe/
 
 - Android Studio (latest stable)
 - Android phone running Android 8.0+ (API 26+)
-- A physical device. Emulators reproduce neither overlay behaviour nor the OEM battery
-  managers that silently disable accessibility services, which is most of what can go
-  wrong here
+- A physical device for release checks. Emulators can verify basic overlay behavior;
+  they do not reproduce OEM battery management or every accessibility/gesture behavior.
 
 ### Run locally
 
@@ -136,9 +139,14 @@ See [REVIEW.md](REVIEW.md) for the latest reliability changes, verification and 
 - [x] App icons and launch screen
 - [x] Per-app custom pause duration
 - [x] Stats screen (how many pauses, how many times you went back)
-- [x] Achievement progress and time-saved insights
-- [x] Widget showing daily pause count
+- [x] Achievement progress based on active days and choices
+- [x] Widget showing daily Continue and Go back choices
+- [x] Live monitoring diagnostics and chosen-app setup test
 - [ ] Play Store release
+
+Verification: `./gradlew testDebugUnitTest assembleDebug lintDebug`. With Python 3 installed,
+`python scripts/verify-progress-query.py` also exercises the Room aggregate SQL against
+SQLite with empty history, multiple choices on one day, and nonconsecutive legacy history.
 
 ---
 

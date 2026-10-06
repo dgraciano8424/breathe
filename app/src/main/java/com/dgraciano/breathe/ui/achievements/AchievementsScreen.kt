@@ -76,9 +76,10 @@ fun AchievementsScreen(
 
                 // Level card
                 item { LevelCard(p) }
+                item { Text("Continue and Go back both count. Active days do not need to be consecutive. Levels now use your existing choice history rather than estimated time saved.", color = BreatheTextSecondary, fontSize = 13.sp) }
 
-                // Time saved summary
-                item { TimeSavedCard(p) }
+                // Observable progress summary
+                item { ProgressSummaryCard(p) }
 
                 // Level path
                 item {
@@ -158,9 +159,9 @@ private fun LevelCard(p: UserProgress) {
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                val needed = p.nextLevel.minMinutes - p.totalMinutesSaved
+                val needed = p.nextLevel.minDays - p.activeDays
                 Text(
-                    "${formatMinutes(needed)} until ${p.nextLevel.name} ${p.nextLevel.emoji}",
+                    "$needed more active ${if (needed == 1L) "day" else "days"} until ${p.nextLevel.name} ${p.nextLevel.emoji}",
                     fontSize = 12.sp, color = BreatheTextMuted, textAlign = TextAlign.Center
                 )
             }
@@ -169,7 +170,7 @@ private fun LevelCard(p: UserProgress) {
 }
 
 @Composable
-private fun TimeSavedCard(p: UserProgress) {
+private fun ProgressSummaryCard(p: UserProgress) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -180,9 +181,9 @@ private fun TimeSavedCard(p: UserProgress) {
             modifier = Modifier.fillMaxWidth().padding(20.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            TimeStat(value = p.hoursDisplay, label = "Estimated time")
+            TimeStat(value = "${p.activeDays}", label = "Active days")
             Box(Modifier.width(1.dp).height(40.dp).background(BreatheDivider))
-            TimeStat(value = "${p.lifetimeDeclines}", label = "Went back")
+            TimeStat(value = "${p.lifetimeChoices}", label = "Choices")
             Box(Modifier.width(1.dp).height(40.dp).background(BreatheDivider))
             TimeStat(value = "${p.badges.count { it.unlocked }}", label = "Badges")
         }
@@ -244,7 +245,7 @@ private fun LevelPath(currentIndex: Int) {
                             color = if (reached) BreatheTextPrimary else BreatheTextMuted
                         )
                         Text(
-                            formatMinutes(level.minMinutes),
+                            "${level.minDays} active ${if (level.minDays == 1L) "day" else "days"}",
                             fontSize = 11.sp,
                             color = BreatheTextMuted
                         )
@@ -315,11 +316,4 @@ private fun BadgeCard(badge: MilestoneBadge, modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-private fun formatMinutes(minutes: Long): String = when {
-    minutes <= 0   -> "unlocked"
-    minutes < 60   -> "${minutes}m"
-    minutes < 1440 -> "${minutes / 60}h"
-    else           -> "${minutes / 1440}d"
 }

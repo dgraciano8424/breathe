@@ -11,6 +11,7 @@ import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.service.MonitoringStatus
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -84,7 +85,7 @@ class HomeViewModelTest {
     }
 
     private fun viewModel() =
-        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context, testDispatcher).also { created.add(it) }
+        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context, testDispatcher, MonitoringStatus()).also { created.add(it) }
 
     @Test
     fun `blocked apps are paired with their usage minutes`() = runTest {

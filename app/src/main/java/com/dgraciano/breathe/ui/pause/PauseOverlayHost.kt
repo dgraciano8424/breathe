@@ -36,6 +36,7 @@ import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
+import com.dgraciano.breathe.service.MonitoringStatus
 import com.dgraciano.breathe.ui.theme.BreatheTheme
 import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -98,6 +99,7 @@ class PauseOverlayHost @Inject constructor(
     private val sessionTimeHelper: SessionTimeHelper,
     private val sessionApprovalStore: SessionApprovalStore,
     private val widgetRefresher: WidgetRefresher,
+    private val monitoringStatus: MonitoringStatus,
     @ApplicationScope private val appScope: CoroutineScope
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -115,16 +117,21 @@ class PauseOverlayHost @Inject constructor(
     @Volatile
     var isShowing: Boolean = false
         private set
+    @Volatile
+    var activePackage: String? = null
+        private set
 
     fun canShow(): Boolean = Settings.canDrawOverlays(context)
 
     /** Safe to call from any thread; window work is posted to the main looper. */
     fun show(packageName: String, appName: String) {
+        activePackage = packageName
         isShowing = true
         mainHandler.post { showInternal(packageName, appName) }
     }
 
     fun hide() {
+        activePackage = null
         isShowing = false
         mainHandler.post { hideInternal() }
     }
@@ -203,17 +210,21 @@ class PauseOverlayHost @Inject constructor(
 
         try {
             windowManager.addView(container, layoutParams())
-        } catch (e: WindowManager.BadTokenException) {
+        } catch (e: RuntimeException) {
             // Overlay permission can be revoked between the check and the add.
             Log.w(TAG, "Overlay rejected; falling back to the pause activity", e)
             overlayOwners.destroy()
             isShowing = false
-            launchPauseActivity(packageName)
+            activePackage = null
+            monitoringStatus.failed()
+            runCatching { launchPauseActivity(packageName) }
+                .onFailure { Log.w(TAG, "Pause activity also unavailable", it) }
             return
         }
 
         root = container
         owners = overlayOwners
+        monitoringStatus.pauseShown()
     }
 
     private fun hideInternal() {

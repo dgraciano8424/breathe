@@ -86,7 +86,8 @@ fun StatsScreen(
                 ) {
                     // Fulfillment Section
                     FulfillmentSection(
-                        streak = state.focusStreak,
+                        choices = state.todayAttempts,
+                        declined = state.todayDeclined,
                         activity = state.lifeWonBackActivity,
                         minutesSaved = state.todayMinutesSaved
                     )
@@ -99,7 +100,7 @@ fun StatsScreen(
                         StatCard(
                             modifier = Modifier.weight(1f),
                             value = "${state.todayAttempts}",
-                            label = "Pauses",
+                            label = "Choices",
                             accent = BreathePrimary
                         )
                         StatCard(
@@ -135,7 +136,7 @@ fun StatsScreen(
 }
 
 @Composable
-fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
+fun FulfillmentSection(choices: Int, declined: Int, activity: String, minutesSaved: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Recent choices Card
         Card(
@@ -149,7 +150,7 @@ fun FulfillmentSection(streak: Int, activity: String, minutesSaved: Int) {
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text("Recent choices", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = BreatheTextPrimary)
-                    Text("$streak consecutive choices to go back", color = BreatheSecondary, fontSize = 14.sp)
+                    Text("${(choices - declined).coerceAtLeast(0)} continued · $declined went back", color = BreatheSecondary, fontSize = 14.sp)
                 }
             }
         }
@@ -307,7 +308,7 @@ private fun TopAppsCard(apps: List<AppStat>) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(app.appName, fontSize = 14.sp, color = BreatheTextPrimary, fontWeight = FontWeight.Medium)
-                        Text("${app.count} pauses", fontSize = 12.sp, color = BreatheTextMuted)
+                        Text("${app.count} choices", fontSize = 12.sp, color = BreatheTextMuted)
                     }
                     Spacer(Modifier.height(6.dp))
                     Box(
