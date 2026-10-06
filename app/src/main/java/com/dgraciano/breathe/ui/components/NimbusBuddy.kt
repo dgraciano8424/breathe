@@ -40,43 +40,11 @@ fun NimbusBuddy(
     modifier: Modifier = Modifier
 ) {
     val reducedMotion = rememberReducedMotion()
-    val transition = rememberInfiniteTransition(label = "nimbus")
-
-    val animatedPulse by transition.animateFloat(
-        initialValue = 0.96f, targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "pulse"
-    )
-    val animatedDrift by transition.animateFloat(
-        initialValue = -1f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "drift"
-    )
-    val animatedWindPhase by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ), label = "wind"
-    )
-    val animatedShimmer by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(5000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ), label = "shimmer"
-    )
-
-    // Held at a pleasant mid-point when the user has asked the system for no motion.
-    // Nimbus still renders in full, it just stops moving.
-    val pulse = if (reducedMotion) 1f else animatedPulse
-    val drift = if (reducedMotion) 0f else animatedDrift
-    val windPhase = if (reducedMotion) 0.5f else animatedWindPhase
-    val shimmer = if (reducedMotion) 0.35f else animatedShimmer
+    val motion = if (reducedMotion) NimbusMotion(1f, 0f, 0.5f, 0.35f) else animatedNimbusMotion()
+    val pulse = motion.pulse
+    val drift = motion.drift
+    val windPhase = motion.windPhase
+    val shimmer = motion.shimmer
 
     // Deliberately compact at low levels so it reads as a companion, not a centrepiece,
     // then grows as the user progresses.
@@ -223,4 +191,41 @@ private fun DrawScope.drawRoundRectStreak(
         size = Size(length, thickness),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(thickness / 2f)
     )
+}
+
+private data class NimbusMotion(val pulse: Float, val drift: Float, val windPhase: Float, val shimmer: Float)
+@Composable
+private fun animatedNimbusMotion(): NimbusMotion {
+    val transition = rememberInfiniteTransition(label = "nimbus")
+
+    val animatedPulse by transition.animateFloat(
+        initialValue = 0.96f, targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "pulse"
+    )
+    val animatedDrift by transition.animateFloat(
+        initialValue = -1f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "drift"
+    )
+    val animatedWindPhase by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "wind"
+    )
+    val animatedShimmer by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "shimmer"
+    )
+
+    return NimbusMotion(animatedPulse, animatedDrift, animatedWindPhase, animatedShimmer)
 }

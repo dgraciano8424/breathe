@@ -283,6 +283,7 @@ fun HomeScreen(
  * Setup returns through the accessibility disclosure; testing opens a chosen app.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun MonitoringCard(
     access: MonitoringPermissions,
     status: MonitoringSnapshot,
@@ -327,7 +328,7 @@ private fun MonitoringCard(
             lineHeight = 18.sp,
             color = BreatheTextSecondary
         )
-        Row {
+        FlowRow {
             TextButton(onClick = onTest, enabled = ready && hasApps) { Text("Test a pause") }
             TextButton(onClick = onFix) { Text("Check setup") }
             TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
@@ -564,10 +565,11 @@ private fun BlockedAppRow(
 
 /** Row of pause lengths; the selected one is filled in. */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun PauseDurationPicker(selected: Int, onSelect: (Int) -> Unit) {
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text = "Pause",

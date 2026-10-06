@@ -21,6 +21,9 @@ interface InterventionEventDao {
     @Insert
     suspend fun insert(event: InterventionEvent)
 
+    @Query("DELETE FROM intervention_events")
+    suspend fun clearHistory()
+
     @Query("SELECT COUNT(*) FROM intervention_events WHERE packageName = :pkg AND timestamp > :since")
     suspend fun getAttemptCount(pkg: String, since: Long): Int
 

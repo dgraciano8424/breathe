@@ -26,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.dgraciano.breathe.ui.components.WaveBackground
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.ui.theme.*
 
 @Composable
@@ -34,6 +35,7 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val reducedMotion = rememberReducedMotion()
     val hasUsage by viewModel.hasUsagePermission.collectAsState()
     val hasOverlay by viewModel.hasOverlayPermission.collectAsState()
     val hasAccessibility by viewModel.hasAccessibility.collectAsState()
@@ -70,14 +72,17 @@ fun OnboardingScreen(
         )
     }
 
-    val transition = rememberInfiniteTransition(label = "onboard")
-    val pulse by transition.animateFloat(
-        initialValue = 0.8f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "pulse"
-    )
+    val pulse = if (reducedMotion) 1f else {
+        val transition = rememberInfiniteTransition(label = "onboard")
+        val animatedPulse by transition.animateFloat(
+            initialValue = 0.8f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(3000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ), label = "pulse"
+        )
+        animatedPulse
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
         WaveBackground(modifier = Modifier.fillMaxSize())
@@ -95,7 +100,7 @@ fun OnboardingScreen(
                 Box(
                     modifier = Modifier
                         .size(100.dp)
-                        .scale(pulse)
+                        .scale(if (reducedMotion) 1f else pulse)
                         .background(BreatheRingOuter, CircleShape)
                 )
                 Box(

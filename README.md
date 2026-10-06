@@ -153,3 +153,9 @@ SQLite with empty history, multiple choices on one day, and nonconsecutive legac
 ## License
 
 MIT
+
+## Local history controls
+
+Your patterns includes Export history CSV and a confirmed Clear history action. The system file picker chooses where the UTF-8 CSV is saved. It includes timestamps, app names/packages, choices, optional reasons and estimated skipped minutes. Clearing resets recorded choices, milestones and estimates while keeping monitored apps and durations. Exported files remain wherever you saved them.
+
+The ocean background is static. Reduced motion follows Android's animator setting, and monitored-app controls can wrap at larger font sizes.

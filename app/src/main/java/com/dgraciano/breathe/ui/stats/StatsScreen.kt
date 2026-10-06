@@ -24,6 +24,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.data.model.AppStat
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.theme.*
@@ -35,7 +41,21 @@ fun StatsScreen(
     viewModel: StatsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val notice by viewModel.notice.collectAsState()
+    val working by viewModel.working.collectAsState()
+    val reducedMotion = rememberReducedMotion()
+    var confirmClear by remember { mutableStateOf(false) }
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { destination ->
+        destination?.let(viewModel::exportHistory)
+    }
     var showContent by remember { mutableStateOf(false) }
+
+    if (confirmClear) {
+        AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("Clear your history?") },
+            text = { Text("Delete all recorded choices and reset your progress and estimates? Your monitored apps and pause lengths stay saved. This cannot be undone. Export first if you want a copy.") },
+            confirmButton = { TextButton(onClick = { confirmClear = false; viewModel.clearHistory() }) { Text("Clear history") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Keep history") } })
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadStats()
@@ -74,7 +94,8 @@ fun StatsScreen(
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(tween(800)) + slideInVertically(tween(800)) { 50 }
+                enter = if (reducedMotion) EnterTransition.None else fadeIn(tween(250)),
+                exit = if (reducedMotion) ExitTransition.None else fadeOut(tween(150))
             ) {
                 Column(
                     modifier = Modifier
@@ -88,7 +109,6 @@ fun StatsScreen(
                     FulfillmentSection(
                         choices = state.todayAttempts,
                         declined = state.todayDeclined,
-                        activity = state.lifeWonBackActivity,
                         minutesSaved = state.todayMinutesSaved
                     )
 
@@ -128,6 +148,14 @@ fun StatsScreen(
                         TopAppsCard(apps = state.topApps)
                     }
                     
+                    SectionLabel("Your history")
+                    Text("Export a CSV with app names, choice times and optional reasons. Choose where it is saved. Clearing history also resets your milestones.", color = BreatheTextSecondary, fontSize = 14.sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { export.launch("breathe-history-${java.time.LocalDate.now()}.csv") }, enabled = !working) { Text("Export history CSV") }
+                        TextButton(onClick = { confirmClear = true }, enabled = !working) { Text("Clear history") }
+                    }
+                    if (working) Text("Working on your history…", color = BreatheTextSecondary)
+                    notice?.let { Text(it, color = BreatheTextSecondary, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -136,7 +164,7 @@ fun StatsScreen(
 }
 
 @Composable
-fun FulfillmentSection(choices: Int, declined: Int, activity: String, minutesSaved: Int) {
+fun FulfillmentSection(choices: Int, declined: Int, minutesSaved: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Recent choices Card
         Card(
@@ -176,8 +204,8 @@ fun FulfillmentSection(choices: Int, declined: Int, activity: String, minutesSav
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = if (minutesSaved > 0 && activity.isNotEmpty()) {
-                            "One possibility for that time: $activity."
+                        text = if (minutesSaved > 0) {
+                            "These estimates stay separate from your milestones."
                         } else {
                             "An estimate appears after you choose to go back."
                         },

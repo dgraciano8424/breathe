@@ -86,45 +86,18 @@ fun PauseScreen(
         label = "brush"
     )
 
-    val transition = rememberInfiniteTransition(label = "breathe")
-
-    val animatedBreathScale by transition.animateFloat(
-        initialValue = 0.7f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "scale"
-    )
-
-    val animatedBreathAlpha by transition.animateFloat(
-        initialValue = 0.4f, targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "alpha"
-    )
-
-    val animatedPhase by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ), label = "phase"
-    )
-
-    // With motion off the rings hold still, and the breath cue is driven by the
-    // countdown instead so the guidance still alternates.
-    val breathScale = if (reducedMotion) 0.9f else animatedBreathScale
-    val breathAlpha = if (reducedMotion) 0.6f else animatedBreathAlpha
-    val isInhale = if (reducedMotion) (secondsLeft / 4) % 2 == 0 else animatedPhase < 0.5f
+    val motion = if (reducedMotion) BreathMotion(0.9f, 0.6f, 0f) else animatedBreathMotion()
+    val breathScale = motion.scale
+    val breathAlpha = motion.alpha
+    val isInhale = if (reducedMotion) (secondsLeft / 4) % 2 == 0 else motion.phase < 0.5f
     val breathLabel = if (isInhale) "Breathe in gently" else "Breathe out slowly"
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                translationX = -brushOffset * size.width
-                alpha = 1f - (brushOffset * 0.5f)
+                translationX = if (reducedMotion) 0f else -brushOffset * size.width
+                alpha = if (reducedMotion) 1f else 1f - (brushOffset * 0.5f)
             }
     ) {
         Box(modifier = Modifier.fillMaxSize().background(BreatheBackground)) {
@@ -330,4 +303,36 @@ private fun attemptCountLabel(count: Int): String = when (count) {
     2 -> "Your 2nd visit today"
     3 -> "Your 3rd visit today"
     else -> "Visit #$count today"
+}
+
+private data class BreathMotion(val scale: Float, val alpha: Float, val phase: Float)
+@Composable
+private fun animatedBreathMotion(): BreathMotion {
+    val transition = rememberInfiniteTransition(label = "breathe")
+
+    val animatedBreathScale by transition.animateFloat(
+        initialValue = 0.7f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "scale"
+    )
+
+    val animatedBreathAlpha by transition.animateFloat(
+        initialValue = 0.4f, targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "alpha"
+    )
+
+    val animatedPhase by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "phase"
+    )
+
+    return BreathMotion(animatedBreathScale, animatedBreathAlpha, animatedPhase)
 }

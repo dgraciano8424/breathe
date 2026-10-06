@@ -14,6 +14,7 @@ import com.dgraciano.breathe.ui.home.HomeScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingScreen
 import com.dgraciano.breathe.ui.onboarding.OnboardingViewModel
 import com.dgraciano.breathe.ui.stats.StatsScreen
+import com.dgraciano.breathe.ui.components.rememberReducedMotion
 
 object Routes {
     const val ONBOARDING   = "onboarding"
@@ -26,6 +27,7 @@ object Routes {
 @Composable
 fun BreatheNavGraph() {
     val nav = rememberNavController()
+    val reducedMotion = rememberReducedMotion()
     val onboardingViewModel: OnboardingViewModel = hiltViewModel()
 
     // Keyed on the two permissions interception actually needs. It used to key on usage
@@ -43,16 +45,16 @@ fun BreatheNavGraph() {
         navController = nav,
         startDestination = startDest,
         enterTransition = {
-            fadeIn(animationSpec = tween(700)) + slideInHorizontally(animationSpec = tween(700)) { it / 10 }
+            if (reducedMotion) EnterTransition.None else fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { it / 20 }
         },
         exitTransition = {
-            fadeOut(animationSpec = tween(700)) + slideOutHorizontally(animationSpec = tween(700)) { -it / 10 }
+            if (reducedMotion) ExitTransition.None else fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { -it / 20 }
         },
         popEnterTransition = {
-            fadeIn(animationSpec = tween(700)) + slideInHorizontally(animationSpec = tween(700)) { -it / 10 }
+            if (reducedMotion) EnterTransition.None else fadeIn(animationSpec = tween(250)) + slideInHorizontally(animationSpec = tween(250)) { -it / 20 }
         },
         popExitTransition = {
-            fadeOut(animationSpec = tween(700)) + slideOutHorizontally(animationSpec = tween(700)) { it / 10 }
+            if (reducedMotion) ExitTransition.None else fadeOut(animationSpec = tween(250)) + slideOutHorizontally(animationSpec = tween(250)) { it / 20 }
         }
     ) {
         composable(Routes.ONBOARDING) {

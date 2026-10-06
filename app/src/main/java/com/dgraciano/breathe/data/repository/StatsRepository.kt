@@ -58,4 +58,9 @@ class StatsRepository @Inject constructor(private val dao: InterventionEventDao)
     fun getRecentEvents(): Flow<List<InterventionEvent>> = dao.getRecent()
 
     suspend fun recordEvent(event: InterventionEvent) = dao.insert(event)
+
+    suspend fun getHistory(): List<InterventionEvent> = dao.getAllOrdered()
+
+    /** Deletes choices only; monitored apps and their settings belong to another table. */
+    suspend fun clearHistory() = dao.clearHistory()
 }

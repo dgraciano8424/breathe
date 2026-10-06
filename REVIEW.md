@@ -19,7 +19,7 @@ Keep the offline Android foundation: Kotlin, Compose, Room, narrow accessibility
 - Show both choices in insights and the home widget. Keep inferred session minutes separate and clearly labeled as estimates. Fix Sunday's Monday-based week boundary across locales.
 - Inject the home IO dispatcher and cancel test ViewModels, removing a test race against real background work.
 
-### Chrome 0.3.0
+### Chrome 0.4.0
 
 - Add 15-, 30- and 60-minute snooze in the popup and settings, with Resume now and a displayed deadline. Preserve the website list, durations, master-enabled preference and statistics.
 - Save the snooze deadline locally; wake the worker with a Chrome alarm, check expiry on startup/settings requests, and recreate the alarm after restart. Ignore an early alarm when a newer snooze remains active. Chrome can deliver alarms late after sleep, so this is not an exact scheduling guarantee.
@@ -29,16 +29,24 @@ Keep the offline Android foundation: Kotlin, Compose, Room, narrow accessibility
 
 ## Verification
 
-- Chrome: 21 unit tests, 14 installed-extension Chromium tests, TypeScript, production build and ZIP pass. Tests cover countdowns, exact destinations, tab-scoped approvals, permissions, failed saves, backup/undo, pending-pause release, early/expiry alarms and snooze controls in both interfaces. A startup options-navigation race in the browser harness was fixed by waiting for the install handler. Native Chrome permission accept/deny dialogs remain a manual release check.
-- Android: 58 JVM tests, debug APK and normal lintDebug pass. Lint has zero errors and 48 warnings, including existing dependency/toolchain and unused-resource warnings. The Python standard-library progress SQL check passes empty history, duplicate-day choices and nonconsecutive legacy history with estimated savings retained separately.
+- Chrome: 23 unit tests, 16 installed-extension Chromium tests, TypeScript, production build and ZIP pass. Tests cover countdowns, exact destinations, tab-scoped approvals, permissions, failed saves, backup/undo, pending-pause release, early/expiry alarms and snooze controls in both interfaces. A startup options-navigation race in the browser harness was fixed by waiting for the install handler. Native Chrome permission accept/deny dialogs remain a manual release check.
+- Android: 65 JVM tests, debug APK and normal lintDebug pass. Lint has zero errors and 48 warnings, including existing dependency/toolchain and unused-resource warnings. The Python standard-library progress SQL check passes empty history, duplicate-day choices and nonconsecutive legacy history with estimated savings retained separately.
 - Read-only Pixel emulator: confirmed chosen-app testing opens the overlay; notification shade preserves it; Home and screen-off remove it; reopening can pause again; Continue and hardware Back each record a choice. Home showed two choices, one Go back and one active day. Monitoring details showed connection/loading/last displayed pause. Permission-loss/recovery states were inspected. No accessibility service crash appeared in these checks.
 
 ## Remaining improvements
 
-1. Unify the visual language. Chrome uses cream and sage; Android uses an ocean palette and decorative waves. Simplify Android's waves/cards, improve contrast, and verify large fonts and reduced motion on every screen before changing its whole theme.
-2. Add Android timed pause-all, history export/deletion and clearer support instructions. Keep control local; accounts/cloud synchronization are unnecessary for the core flow.
+1. Unify the visual language. Chrome uses cream and sage; Android uses an ocean palette with a static gradient. Continue verifying large fonts and reduced motion on every screen before changing its whole theme.
+2. Add Android timed pause-all and clearer support instructions. Keep control local; accounts/cloud synchronization are unnecessary for the core flow.
 3. Verify physical-phone behavior: app switching, keyboard changes, notification shade, lock/unlock, split screen, overlay revocation and OEM battery restrictions. Test database upgrades from older releases before store publication. Emulator checks do not establish behavior on every phone.
 
 Accessibility window events cannot guarantee intervention before an app displays or loads content. Chrome handles new top-level HTTP/HTTPS GET visits; already loaded tab activation, SPA routing and some history/cache restores remain outside interception. Android APK is a debug test build, not a signed store release. Both changes remain in draft pull requests.
 
 Platform references: [Android accessibility events](https://developer.android.com/reference/android/view/accessibility/AccessibilityEvent), [elapsedRealtime](https://developer.android.com/reference/android/os/SystemClock), [overlay constraints](https://developer.android.com/about/versions/12/behavior-changes-all#untrusted-touch-events), and [Chrome alarms](https://developer.chrome.com/docs/extensions/reference/api/alarms).
+
+## Latest everyday controls
+
+Android now exports UTF-8 history CSV through the system file picker, with confirmed local history deletion that preserves monitored apps and durations. Export failures leave history intact. Tests cover quoting, Unicode, spreadsheet formula protection, failed writes/deletion, duplicate requests and stale loads. SQLite checks also verify app settings survive deletion. The background is static, muted text has higher contrast, reduced motion updates live, and Home controls wrap at larger font sizes.
+
+Chrome 0.4.0 adds website search with a no-match state, aggregate statistics CSV export and today's Continue count in the popup. Browser tests verify filtering preserves stored sites and exported counts exclude domains/URLs.
+
+This pass checked Android's real file-picker export and clear-history dialog on a read-only emulator, with 1.5x text layouts inspected. Physical-phone testing remains deferred. Android lint has zero errors and 48 warnings.
