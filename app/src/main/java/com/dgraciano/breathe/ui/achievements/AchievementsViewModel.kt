@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import javax.inject.Inject
 
 @HiltViewModel
@@ -24,6 +26,17 @@ class AchievementsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading
     private var loadJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            repo.historyChanges().catch {
+                android.util.Log.w("AchievementsViewModel", "History observation unavailable; resume can refresh", it)
+            }.collect {
+                loadJob?.join()
+                load()
+            }
+        }
+    }
 
     fun load() {
         if (loadJob?.isActive == true) return

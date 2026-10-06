@@ -6,17 +6,36 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.InterventionEvent
+import com.dgraciano.breathe.data.model.PendingChoice
 
 @Database(
-    entities = [BlockedApp::class, InterventionEvent::class],
-    version = 5,
+    entities = [BlockedApp::class, InterventionEvent::class, PendingChoice::class],
+    version = 6,
     exportSchema = true
 )
 abstract class BreatheDatabase : RoomDatabase() {
     abstract fun blockedAppDao(): BlockedAppDao
     abstract fun interventionEventDao(): InterventionEventDao
+    abstract fun pendingChoiceDao(): PendingChoiceDao
 
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE intervention_events ADD COLUMN choiceId TEXT")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_intervention_events_choiceId ON intervention_events(choiceId)")
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS pending_choices (
+                        choiceId TEXT NOT NULL PRIMARY KEY,
+                        packageName TEXT NOT NULL,
+                        appName TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        outcome TEXT NOT NULL,
+                        reason TEXT
+                    )
+                """.trimIndent())
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("""

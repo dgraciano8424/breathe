@@ -22,10 +22,12 @@ object DatabaseModule {
                 BreatheDatabase.MIGRATION_1_2,
                 BreatheDatabase.MIGRATION_2_3,
                 BreatheDatabase.MIGRATION_3_4,
-                BreatheDatabase.MIGRATION_4_5
+                BreatheDatabase.MIGRATION_4_5,
+                BreatheDatabase.MIGRATION_5_6
             )
             .build()
 
     @Provides fun provideBlockedAppDao(db: BreatheDatabase) = db.blockedAppDao()
     @Provides fun provideInterventionEventDao(db: BreatheDatabase) = db.interventionEventDao()
+    @Provides fun providePendingChoiceDao(db: BreatheDatabase) = db.pendingChoiceDao()
 }

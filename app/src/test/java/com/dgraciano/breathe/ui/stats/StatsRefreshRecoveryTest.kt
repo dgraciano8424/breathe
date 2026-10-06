@@ -4,6 +4,7 @@ import com.dgraciano.breathe.data.repository.StatsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.every
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,6 +23,7 @@ class StatsRefreshRecoveryTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         repo = mockk {
+            every { getRecentEvents() } returns kotlinx.coroutines.flow.emptyFlow()
             coEvery { getTodayDeclined() } returns 2
             coEvery { getFocusStreak() } returns 1
             coEvery { getTodayMinutesSaved() } returns 3

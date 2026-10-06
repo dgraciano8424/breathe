@@ -18,6 +18,15 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StatsViewModelTest {
+    @Test fun `history replay refreshes open Insights after its initial read`() = runTest {
+        val changes = kotlinx.coroutines.flow.MutableSharedFlow<List<InterventionEvent>>()
+        every { repo.getRecentEvents() } returns changes
+        val model = vm()
+        assertEquals(4, model.state.value.todayAttempts)
+        coEvery { repo.getTodayTotalAttempts() } returns 5
+        changes.emit(emptyList())
+        assertEquals(5, model.state.value.todayAttempts)
+    }
     private val dispatcher = UnconfinedTestDispatcher()
     private lateinit var repo: StatsRepository
     private lateinit var widgets: WidgetRefresher
@@ -27,6 +36,7 @@ class StatsViewModelTest {
     @Before fun setup() {
         Dispatchers.setMain(dispatcher)
         repo = mockk {
+            every { getRecentEvents() } returns kotlinx.coroutines.flow.emptyFlow()
             coEvery { getTodayTotalAttempts() } returns 4
             coEvery { getTodayDeclined() } returns 2
             coEvery { getWeeklyTotalAttempts() } returns 4

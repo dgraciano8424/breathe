@@ -22,7 +22,17 @@ interface InterventionEventDao {
     suspend fun insert(event: InterventionEvent)
 
     @Query("DELETE FROM intervention_events")
-    suspend fun clearHistory()
+    suspend fun deleteHistory()
+
+    @Query("DELETE FROM pending_choices")
+    suspend fun deletePendingChoices()
+
+    /** Clear history and its queue together so retries cannot restore it. */
+    @Transaction
+    suspend fun clearHistory() {
+        deletePendingChoices()
+        deleteHistory()
+    }
 
     @Query("SELECT COUNT(*) FROM intervention_events WHERE packageName = :pkg AND timestamp >= :since")
     suspend fun getAttemptCount(pkg: String, since: Long): Int

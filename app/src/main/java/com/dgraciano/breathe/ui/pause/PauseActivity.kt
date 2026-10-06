@@ -59,7 +59,9 @@ class PauseActivity : ComponentActivity() {
                 val reminder by pausePreferences.reminder.collectAsState()
                 val tip by viewModel.tip.collectAsState()
                 val activity by viewModel.alternativeActivity.collectAsState()
-                val pauseSeconds by viewModel.pauseSeconds.collectAsState()
+                val secondsLeft by viewModel.secondsRemaining.collectAsState()
+                val saving by viewModel.saving.collectAsState()
+                val saveError by viewModel.saveError.collectAsState()
                 val sessionId by viewModel.sessionId.collectAsState()
                 val ready by viewModel.ready.collectAsState()
 
@@ -70,13 +72,15 @@ class PauseActivity : ComponentActivity() {
                     alternativeActivity = activity,
                     selectedReason = selectedReason,
                     personalReminder = reminder,
-                    pauseSeconds = pauseSeconds,
+                    secondsLeft = secondsLeft,
+                    saving = saving,
+                    saveError = saveError,
+                    onDisplayed = viewModel::startCountdown,
                     sessionId = sessionId,
                     ready = ready,
                     onReasonSelected = viewModel::selectReason,
                     onYes = {
-                        viewModel.recordOpened()
-                        finish()
+                        viewModel.recordOpened { finish() }
                     },
                     onNo = ::declineAndFinish
                 )
@@ -94,10 +98,11 @@ class PauseActivity : ComponentActivity() {
     }
 
     private fun declineAndFinish() {
-        viewModel.recordDeclined()
-        startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        finish()
+        viewModel.recordDeclined {
+            startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            finish()
+        }
     }
 
     companion object {

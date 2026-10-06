@@ -178,4 +178,6 @@ Home offers **Add a personal reminder** (or **Edit your personal reminder**). Wr
 
 Home has direct links to Choose apps, Settings, Insights and Achievements. Settings stays available after access is granted. Practice uses the real pause layout without changing history or approvals and works before special permissions are enabled. The live Test a pause control opens a selected app and records real choices.
 
-Room exports the unchanged v5 schema under `app/schemas`. Run `python scripts/check_migrations.py` for production migration SQL and retained-data checks, and `python scripts/check_stats_queries.py` for midnight boundaries. Current quality evidence and remaining device/release gates are tracked in `COMPETITION_READINESS.md`.
+Room exports its v5 and v6 schemas under `app/schemas`. Version 6 adds a durable choice queue and duplicate-delivery protection while preserving existing settings/history. Run `python scripts/check_migrations.py` for production migration SQL, retained-data and index checks, and `python scripts/check_stats_queries.py` for midnight boundaries. Current quality evidence and remaining device/release gates are tracked in `COMPETITION_READINESS.md`.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for pause policies, platform boundaries and the durable recording flow. A choice is saved to the local queue before its pause closes; failed initial saves stay visible for retry, and queued history delivery recovers after process restart.

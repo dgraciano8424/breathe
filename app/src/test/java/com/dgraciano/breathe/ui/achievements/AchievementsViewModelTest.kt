@@ -5,6 +5,7 @@ import com.dgraciano.breathe.data.repository.AchievementRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.every
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,7 +24,10 @@ class AchievementsViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        repo = mockk { coEvery { getUserProgress() } returns progress }
+        repo = mockk {
+            coEvery { getUserProgress() } returns progress
+            every { historyChanges() } returns kotlinx.coroutines.flow.emptyFlow()
+        }
     }
 
     @After

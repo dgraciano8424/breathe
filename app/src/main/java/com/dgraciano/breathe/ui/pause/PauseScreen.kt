@@ -1,6 +1,5 @@
 package com.dgraciano.breathe.ui.pause
 
-import android.os.SystemClock
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
@@ -36,7 +35,6 @@ import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.ui.theme.*
-import kotlinx.coroutines.delay
 
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -48,9 +46,12 @@ fun PauseScreen(
     alternativeActivity: String,
     selectedReason: String?,
     personalReminder: String = "",
-    pauseSeconds: Int,
+    secondsLeft: Int,
     sessionId: Int = 0,
     ready: Boolean = true,
+    saving: Boolean = false,
+    saveError: String? = null,
+    onDisplayed: () -> Unit = {},
     onReasonSelected: (String) -> Unit,
     onYes: () -> Unit,
     onNo: () -> Unit
@@ -60,17 +61,7 @@ fun PauseScreen(
     var showTip by remember(sessionId) { mutableStateOf(false) }
     val reducedMotion = rememberReducedMotion()
 
-    // The whole point of the pause: the way out of the app stays shut until the user
-    // has actually sat with the breathing for as long as they configured.
-    val deadline = remember(sessionId, pauseSeconds, ready) { SystemClock.elapsedRealtime() + pauseSeconds * 1000L }
-    var secondsLeft by remember(sessionId, pauseSeconds, ready) { mutableIntStateOf(pauseSeconds) }
-    LaunchedEffect(sessionId, deadline, ready) {
-        if (!ready) return@LaunchedEffect
-        while (secondsLeft > 0) {
-            delay(100)
-            secondsLeft = ((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0) + 999).div(1000).toInt()
-        }
-    }
+    LaunchedEffect(sessionId, ready) { if (ready) onDisplayed() }
 
     val motion = if (reducedMotion) BreathMotion(0.9f, 0.6f, 0f) else animatedBreathMotion()
     val breathScale = motion.scale
@@ -255,17 +246,19 @@ fun PauseScreen(
 
                 // Actions
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    saveError?.let { Text(it, color = BreatheTextPrimary, textAlign = TextAlign.Center) }
                     Button(
                         onClick = onNo,
+                        enabled = !saving,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(28.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = BreathePrimary, contentColor = BreatheOnPrimary)
                     ) {
-                        Text("Go back", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(if (saving) "Saving your choice…" else "Go back", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                     TextButton(
                         onClick = onYes,
-                        enabled = ready && secondsLeft <= 0,
+                        enabled = ready && secondsLeft <= 0 && !saving,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(

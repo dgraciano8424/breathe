@@ -16,6 +16,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -43,6 +47,18 @@ class StatsViewModel @Inject constructor(
     private val mutableWorking = MutableStateFlow(false)
     val working: StateFlow<Boolean> = mutableWorking
     private var loadJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            statsRepo.getRecentEvents().catch {
+                android.util.Log.w("StatsViewModel", "History observation unavailable; resume can refresh", it)
+            }.collect {
+                loadJob?.join()
+                mutableWorking.filter { !it }.first()
+                loadStats()
+            }
+        }
+    }
 
     private suspend fun readStats() = StatsUiState(
         todayAttempts = statsRepo.getTodayTotalAttempts(), todayDeclined = statsRepo.getTodayDeclined(),

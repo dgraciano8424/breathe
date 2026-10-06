@@ -44,6 +44,17 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
 
+    @Test
+    fun `queued history delivery updates Home without leaving and reopening it`() = runTest {
+        val changes = kotlinx.coroutines.flow.MutableSharedFlow<List<com.dgraciano.breathe.data.model.InterventionEvent>>()
+        every { statsRepo.getRecentEvents() } returns changes
+        val vm = viewModel()
+        assertEquals(0, vm.todayAttempts.value)
+        coEvery { statsRepo.getTodayTotalAttempts() } returns 1
+        changes.emit(emptyList())
+        assertEquals(1, vm.todayAttempts.value)
+    }
+
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var repo: AppRepository
     private lateinit var statsRepo: StatsRepository
@@ -69,6 +80,7 @@ class HomeViewModelTest {
 
         repo = mockk { every { getBlockedApps() } returns blockedApps }
         statsRepo = mockk {
+            every { getRecentEvents() } returns kotlinx.coroutines.flow.emptyFlow()
             coEvery { getTodayTotalAttempts() } returns 0
             coEvery { getTodayDeclined() } returns 0
             coEvery { getTodayMinutesSaved() } returns 0

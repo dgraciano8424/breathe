@@ -31,19 +31,11 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.dgraciano.breathe.data.repository.AppRepository
-import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
-import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.data.repository.PausePreferences
-import com.dgraciano.breathe.di.ApplicationScope
-import com.dgraciano.breathe.service.SessionApprovalStore
-import com.dgraciano.breathe.service.SessionTimeHelper
 import com.dgraciano.breathe.service.MonitoringStatus
 import com.dgraciano.breathe.ui.theme.BreatheTheme
 import android.content.pm.ApplicationInfo
-import com.dgraciano.breathe.widget.WidgetRefresher
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -63,7 +55,9 @@ private fun PauseOverlayContent(
     val reminder by preferences.reminder.collectAsState()
     val tip by viewModel.tip.collectAsState()
     val activity by viewModel.alternativeActivity.collectAsState()
-    val pauseSeconds by viewModel.pauseSeconds.collectAsState()
+    val secondsLeft by viewModel.secondsRemaining.collectAsState()
+    val saving by viewModel.saving.collectAsState()
+    val saveError by viewModel.saveError.collectAsState()
     val sessionId by viewModel.sessionId.collectAsState()
     val ready by viewModel.ready.collectAsState()
 
@@ -74,7 +68,10 @@ private fun PauseOverlayContent(
         alternativeActivity = activity,
         selectedReason = selectedReason,
         personalReminder = reminder,
-        pauseSeconds = pauseSeconds,
+        secondsLeft = secondsLeft,
+        saving = saving,
+        saveError = saveError,
+        onDisplayed = viewModel::startCountdown,
         sessionId = sessionId,
         ready = ready,
         onReasonSelected = viewModel::selectReason,
@@ -99,15 +96,9 @@ private fun PauseOverlayContent(
 @Singleton
 class PauseOverlayHost @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val statsRepo: StatsRepository,
-    private val appRepo: AppRepository,
-    private val tipsRepo: MentalHealthTipsRepository,
-    private val sessionTimeHelper: SessionTimeHelper,
-    private val sessionApprovalStore: SessionApprovalStore,
-    private val widgetRefresher: WidgetRefresher,
+    private val viewModelFactory: PauseViewModelFactory,
     private val monitoringStatus: MonitoringStatus,
-    private val pausePreferences: PausePreferences,
-    @ApplicationScope private val appScope: CoroutineScope
+    private val pausePreferences: PausePreferences
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager by lazy { context.getSystemService(WindowManager::class.java) }
@@ -152,15 +143,7 @@ class PauseOverlayHost @Inject constructor(
             overlayOwners.viewModelStore,
             viewModelFactory {
                 initializer {
-                    PauseViewModel(
-                        statsRepo = statsRepo,
-                        appRepo = appRepo,
-                        tipsRepo = tipsRepo,
-                        sessionTimeHelper = sessionTimeHelper,
-                        sessionApprovalStore = sessionApprovalStore,
-                        widgetRefresher = widgetRefresher,
-                        appScope = appScope
-                    )
+                    viewModelFactory.create()
                 }
             }
         )[PauseViewModel::class.java]
@@ -178,14 +161,10 @@ class PauseOverlayHost @Inject constructor(
                         viewModel = viewModel,
                         preferences = pausePreferences,
                         onYes = {
-                            viewModel.recordOpened()
-                            // The blocked app is still in the foreground behind us.
-                            hide()
+                            viewModel.recordOpened { hide() }
                         },
                         onNo = {
-                            viewModel.recordDeclined()
-                            hide()
-                            goHome()
+                            viewModel.recordDeclined { hide(); goHome() }
                         }
                     )
                 }
@@ -198,9 +177,7 @@ class PauseOverlayHost @Inject constructor(
         val container = object : FrameLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    viewModel.recordDeclined()
-                    hide()
-                    goHome()
+                    viewModel.recordDeclined { hide(); goHome() }
                     return true
                 }
                 return super.dispatchKeyEvent(event)

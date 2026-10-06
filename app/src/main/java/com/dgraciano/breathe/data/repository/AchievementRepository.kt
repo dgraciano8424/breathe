@@ -10,6 +10,8 @@ import javax.inject.Singleton
 class AchievementRepository @Inject constructor(
     private val dao: InterventionEventDao
 ) {
+    fun historyChanges() = dao.getRecent()
+
     suspend fun getUserProgress(): UserProgress {
         val totals = dao.getProgressTotals()
         val level        = Achievements.computeLevel(totals.activeDays)

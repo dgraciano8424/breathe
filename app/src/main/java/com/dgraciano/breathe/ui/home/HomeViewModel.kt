@@ -122,6 +122,15 @@ class HomeViewModel @Inject constructor(
         refreshMonitoringState()
         refreshStats()
         loadAppsWithStats()
+        viewModelScope.launch {
+            // Startup/retry delivery may commit after the first on-resume read.
+            statsRepo.getRecentEvents().catch {
+                android.util.Log.w("HomeViewModel", "History observation unavailable; resume can refresh", it)
+            }.collect {
+                statsJob?.join()
+                refreshStats()
+            }
+        }
     }
 
     /**
