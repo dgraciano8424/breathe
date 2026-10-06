@@ -167,3 +167,9 @@ The ocean background is static. Reduced motion follows Android's animator settin
 ## Security and release readiness
 
 See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the reviewed boundaries, dependency checks, hardening and remaining release work. Passing builds and automated tests do not replace physical-device, database-upgrade and final signed-release validation.
+
+## Personalize your pause
+
+Home offers **Add a personal reminder** (or **Edit your personal reminder**). Write up to 140 characters, such as taking a short walk or finishing a chapter. Save applies it to both the overlay and fallback pause screen; Cancel keeps the previous reminder. Clear text and Save removes it. This global preference stays local, is excluded from backup/transfer, and is not copied into choice history or exports.
+
+**Add an intention (optional)** reveals Work, Learn, Relax, Connect, Curious, Bored, Habit and Escaping. Tap again to clear a selection. Skip it whenever you want. Go back remains available immediately, and Continue uses the same configured countdown. Existing recorded reason keys and history stay intact; no database schema change is introduced.

@@ -13,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.dgraciano.breathe.ui.theme.BreatheTheme
 import com.dgraciano.breathe.service.SnoozeStore
+import com.dgraciano.breathe.data.repository.PausePreferences
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,6 +23,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class PauseActivity : ComponentActivity() {
 
     @Inject lateinit var snoozeStore: SnoozeStore
+    @Inject lateinit var pausePreferences: PausePreferences
 
     private val viewModel: PauseViewModel by viewModels()
 
@@ -54,6 +56,7 @@ class PauseActivity : ComponentActivity() {
             BreatheTheme {
                 val attemptCount by viewModel.attemptCount.collectAsState()
                 val selectedReason by viewModel.selectedReason.collectAsState()
+                val reminder by pausePreferences.reminder.collectAsState()
                 val tip by viewModel.tip.collectAsState()
                 val activity by viewModel.alternativeActivity.collectAsState()
                 val pauseSeconds by viewModel.pauseSeconds.collectAsState()
@@ -66,6 +69,7 @@ class PauseActivity : ComponentActivity() {
                     tip = tip,
                     alternativeActivity = activity,
                     selectedReason = selectedReason,
+                    personalReminder = reminder,
                     pauseSeconds = pauseSeconds,
                     sessionId = sessionId,
                     ready = ready,

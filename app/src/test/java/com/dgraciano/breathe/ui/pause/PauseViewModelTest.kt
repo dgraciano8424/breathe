@@ -320,4 +320,27 @@ class PauseViewModelTest {
         assertEquals(3, viewModel.attemptCount.value)
         assertEquals(true, viewModel.ready.value)
     }
+
+    @Test
+    fun `legitimate intentions remain optional and reset for a new pause`() = runTest {
+        coEvery { statsRepo.getTodayAttemptCount(any()) } returns 0
+        coEvery { statsRepo.recordEvent(any()) } returns Unit
+        viewModel.init("com.example", "Example")
+        viewModel.selectReason("WORK")
+        viewModel.recordOpened()
+        coVerify { statsRepo.recordEvent(match { it.reason == "WORK" && it.outcome == InterventionEvent.OUTCOME_OPENED }) }
+        viewModel.init("com.other", "Other")
+        assertNull(viewModel.selectedReason.value)
+        viewModel.selectReason("RELAX")
+        assertEquals("RELAX", viewModel.selectedReason.value)
+        viewModel.selectReason("RELAX")
+        assertNull(viewModel.selectedReason.value)
+    }
+
+    @Test
+    fun `unknown reasons cannot replace an explicit intention`() = runTest {
+        viewModel.selectReason("LEARN")
+        viewModel.selectReason("unexpected")
+        assertEquals("LEARN", viewModel.selectedReason.value)
+    }
 }

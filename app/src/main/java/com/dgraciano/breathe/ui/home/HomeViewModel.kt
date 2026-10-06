@@ -10,6 +10,7 @@ import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.data.repository.AchievementRepository
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.data.repository.PausePreferences
 import com.dgraciano.breathe.service.BreatheAccessibilityService
 import com.dgraciano.breathe.service.MonitoringStatus
 import com.dgraciano.breathe.service.SnoozeStore
@@ -38,7 +39,8 @@ class HomeViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val monitoringStatus: MonitoringStatus,
-    private val snoozeStore: SnoozeStore
+    private val snoozeStore: SnoozeStore,
+    private val pausePreferences: PausePreferences
 ) : ViewModel() {
 
     private val _blockedAppsWithStats = MutableStateFlow<List<BlockedAppWithStats>>(emptyList())
@@ -77,6 +79,23 @@ class HomeViewModel @Inject constructor(
         catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (_: Exception) { _snoozeError.value = "Could not save that change. Try again." }
         finally { _snoozeBusy.value = false }
+    }
+
+    val personalReminder = pausePreferences.reminder
+    private val _reminderSaving = MutableStateFlow(false)
+    val reminderSaving = _reminderSaving.asStateFlow()
+    private val _reminderError = MutableStateFlow<String?>(null)
+    val reminderError = _reminderError.asStateFlow()
+    fun clearReminderError() { _reminderError.value = null }
+    suspend fun saveReminder(value: String): Boolean {
+        if (_reminderSaving.value) return false
+        _reminderSaving.value = true
+        _reminderError.value = null
+        return try { pausePreferences.saveReminder(value); true }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: IllegalArgumentException) { _reminderError.value = error.message; false }
+        catch (_: Exception) { _reminderError.value = "Your reminder could not be saved. Try again."; false }
+        finally { _reminderSaving.value = false }
     }
 
     val monitoring = monitoringStatus.state

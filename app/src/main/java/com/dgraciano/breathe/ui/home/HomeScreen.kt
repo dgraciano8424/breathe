@@ -34,6 +34,8 @@ import com.dgraciano.breathe.service.MonitoringSnapshot
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.dgraciano.breathe.data.repository.MAX_REMINDER_LENGTH
+import kotlinx.coroutines.launch
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.UserProgress
 import com.dgraciano.breathe.ui.components.NimbusBuddy
@@ -61,6 +63,12 @@ fun HomeScreen(
     val snoozedUntil by viewModel.snoozedUntil.collectAsState()
     val snoozeBusy by viewModel.snoozeBusy.collectAsState()
     val snoozeError by viewModel.snoozeError.collectAsState()
+    val personalReminder by viewModel.personalReminder.collectAsState()
+    val reminderSaving by viewModel.reminderSaving.collectAsState()
+    val reminderError by viewModel.reminderError.collectAsState()
+    var showReminderEditor by remember { mutableStateOf(false) }
+    var reminderDraft by remember { mutableStateOf("") }
+    val editScope = rememberCoroutineScope()
     val context = LocalContext.current
     var showTestPicker by remember { mutableStateOf(false) }
     var testError by remember { mutableStateOf<String?>(null) }
@@ -81,6 +89,36 @@ fun HomeScreen(
     }
 
     LaunchedEffect(snoozedUntil) { if (snoozedUntil > 0) showTestPicker = false }
+
+    if (showReminderEditor) {
+        AlertDialog(
+            onDismissRequest = { if (!reminderSaving) showReminderEditor = false },
+            title = { Text("Your personal reminder") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("An optional nudge on every pause screen. Write what you would like to remember, such as taking a short walk. It stays on this device and is not saved in choice history or exports.")
+                    OutlinedTextField(
+                        value = reminderDraft,
+                        onValueChange = { reminderDraft = it; viewModel.clearReminderError() },
+                        label = { Text("Reminder") },
+                        modifier = Modifier.fillMaxWidth(), maxLines = 3,
+                        enabled = !reminderSaving,
+                        isError = reminderDraft.length > MAX_REMINDER_LENGTH,
+                        supportingText = { Text("${reminderDraft.length}/$MAX_REMINDER_LENGTH characters") }
+                    )
+                    if (reminderDraft.isNotEmpty()) TextButton(onClick = { reminderDraft = ""; viewModel.clearReminderError() }, enabled = !reminderSaving) { Text("Clear text") }
+                    reminderError?.let { Text(it) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !reminderSaving && reminderDraft.length <= MAX_REMINDER_LENGTH,
+                    onClick = { editScope.launch { if (viewModel.saveReminder(reminderDraft)) showReminderEditor = false } }
+                ) { Text(if (reminderSaving) "Saving..." else "Save") }
+            },
+            dismissButton = { TextButton(onClick = { showReminderEditor = false }, enabled = !reminderSaving) { Text("Cancel") } }
+        )
+    }
 
     if (showTestPicker) {
         AlertDialog(
@@ -167,6 +205,13 @@ fun HomeScreen(
 
                 item {
                     SnoozeCard(snoozedUntil, snoozeBusy, snoozeError, viewModel::snooze, viewModel::resumePauses)
+                }
+
+                item {
+                    OutlinedButton(
+                        onClick = { reminderDraft = personalReminder; viewModel.clearReminderError(); showReminderEditor = true },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth()
+                    ) { Text(if (personalReminder.isBlank()) "Add a personal reminder" else "Edit your personal reminder") }
                 }
 
                 item {

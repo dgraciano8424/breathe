@@ -173,3 +173,11 @@ None of this has been run on real hardware. In rough order of risk:
 
 - Verify widget placement, refresh after a choice/history clear, tap-to-open and removal with the non-exported receiver. Ordinary other apps must not be able to send it an update broadcast.
 - Inspect production logs after a controlled failed history write; the marker must not include a monitored app identifier, outcome, reason or exception details.
+
+## Personal reminder and intention checks
+
+- Save, edit and remove a personal reminder. Cancel an edit and verify the previous text stays. Restart the app and accessibility service to confirm persistence.
+- Check both the overlay and fallback pause Activity, large text, landscape, keyboard visibility and screen-reader labels. The reminder should wrap; expanded intention choices should wrap and scroll.
+- Edit a reminder during a pause (for example, from split screen); verify the text updates without restarting the countdown or clearing an already selected intention.
+- Save failure should keep the dialog/draft available and preserve the previous reminder. Long input should be rejected; reminders must not appear in statistics exports or choice records.
+- Select each intention, tap again to clear, skip intentions and hide/reveal the section. Choosing Work or Relax must not bypass the countdown; Go back remains immediate. Verify legacy reasons remain in existing history and exports.

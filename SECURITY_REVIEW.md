@@ -13,7 +13,7 @@ The offline design, narrow permissions and separation of state ownership are sou
 | Android network access | Merged release manifest has no INTERNET permission; source has no network client or WebView | This does not stop Android or user-selected document providers from doing their own work |
 | Accessibility | Only window-state events; canRetrieveWindowContent=false | Android delivers app identity; there is no guarantee of intervention before content appears |
 | Android components | Pause Activity and service private; service requires BIND_ACCESSIBILITY_SERVICE; immutable widget PendingIntent | Launcher Activity must remain exported; OS protection does not defend a compromised/rooted device |
-| Local storage | Room in private app storage, explicit migrations, no destructive fallback; database/WAL and snooze preferences excluded from backup/transfer | No separate application-level database encryption; detailed app/choice history remains until cleared |
+| Local storage | Room in private app storage, explicit migrations, no destructive fallback; database/WAL, snooze and personal-reminder preferences excluded from backup/transfer | No separate application-level database encryption; detailed app/choice history and an optional personal reminder remain until cleared |
 | Android export | System document picker; UTF-8 quoting and spreadsheet formula protection | Exported history leaves the app sandbox and follows the user's chosen storage provider |
 | Chrome access | Optional per-site host grants; no website content scripts; default extension script policy; no account or external runtime network API | webNavigation receives navigation URLs for event handling; selected full destinations exist temporarily |
 | Chrome command boundary | Own-extension sender check; trusted settings/popup URLs; pause mutations require matching top-level tab/document ID | Permissions and URL handling also need normal Chrome/Mac acceptance checks |
@@ -26,7 +26,7 @@ The offline design, narrow permissions and separation of state ownership are sou
 
 ## Automated evidence
 
-- Existing current suites: Android 74 JVM tests; Chrome 24 unit tests and 18 installed-extension Chromium tests. Tests establish covered behavior, not universal security or device reliability.
+- Existing current suites: Android 83 JVM tests; Chrome 24 unit tests and 18 installed-extension Chromium tests. Tests establish covered behavior, not universal security or device reliability.
 - npm audit queried the installed Chrome dependency graph and returned zero advisories, including build dependencies. No runtime npm dependency network client is used.
 - OSV querybatch checked 107 resolved Maven coordinates/versions from Android releaseRuntimeClasspath and returned no matching advisories. The query snapshot is saved in docs/security-audit-2026-10-05.json; the complete Gradle dependency output is also retained in the local outputs folder. Registry coverage and undisclosed issues remain limits; Android system components are outside this query.
 - Android optimized unsigned production APK builds with R8/resource shrinking; merged release manifest has debuggable=false. The previously provided test APK is debug. No local release keystore configuration exists in this checkout, so this does not verify a signed store artifact.

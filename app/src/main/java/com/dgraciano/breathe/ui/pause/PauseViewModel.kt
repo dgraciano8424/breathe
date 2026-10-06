@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dgraciano.breathe.data.model.BlockedApp
 import com.dgraciano.breathe.data.model.InterventionEvent
+import com.dgraciano.breathe.data.model.pauseReasonKeys
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
@@ -89,6 +90,7 @@ class PauseViewModel @Inject constructor(
     }
 
     fun selectReason(reason: String) {
+        if (reason !in pauseReasonKeys) return
         _selectedReason.value = if (_selectedReason.value == reason) null else reason
     }
 

@@ -33,6 +33,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.MentalHealthTipsRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
+import com.dgraciano.breathe.data.repository.PausePreferences
 import com.dgraciano.breathe.di.ApplicationScope
 import com.dgraciano.breathe.service.SessionApprovalStore
 import com.dgraciano.breathe.service.SessionTimeHelper
@@ -51,11 +52,13 @@ private const val TAG = "PauseOverlay"
 private fun PauseOverlayContent(
     appName: String,
     viewModel: PauseViewModel,
+    preferences: PausePreferences,
     onYes: () -> Unit,
     onNo: () -> Unit
 ) {
     val attemptCount by viewModel.attemptCount.collectAsState()
     val selectedReason by viewModel.selectedReason.collectAsState()
+    val reminder by preferences.reminder.collectAsState()
     val tip by viewModel.tip.collectAsState()
     val activity by viewModel.alternativeActivity.collectAsState()
     val pauseSeconds by viewModel.pauseSeconds.collectAsState()
@@ -68,6 +71,7 @@ private fun PauseOverlayContent(
         tip = tip,
         alternativeActivity = activity,
         selectedReason = selectedReason,
+        personalReminder = reminder,
         pauseSeconds = pauseSeconds,
         sessionId = sessionId,
         ready = ready,
@@ -100,6 +104,7 @@ class PauseOverlayHost @Inject constructor(
     private val sessionApprovalStore: SessionApprovalStore,
     private val widgetRefresher: WidgetRefresher,
     private val monitoringStatus: MonitoringStatus,
+    private val pausePreferences: PausePreferences,
     @ApplicationScope private val appScope: CoroutineScope
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -169,6 +174,7 @@ class PauseOverlayHost @Inject constructor(
                     PauseOverlayContent(
                         appName = appName,
                         viewModel = viewModel,
+                        preferences = pausePreferences,
                         onYes = {
                             viewModel.recordOpened()
                             // The blocked app is still in the foreground behind us.

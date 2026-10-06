@@ -30,7 +30,7 @@ Keep the offline Android foundation: Kotlin, Compose, Room, narrow accessibility
 ## Verification
 
 - Chrome: 24 unit tests, 18 installed-extension Chromium tests, TypeScript, production build and ZIP pass. Tests cover countdowns, exact destinations, tab-scoped approvals, permissions, failed saves, backup/undo, pending-pause release, early/expiry alarms and snooze controls in both interfaces. A startup options-navigation race in the browser harness was fixed by waiting for the install handler. Native Chrome permission accept/deny dialogs remain a manual release check.
-- Android: 74 JVM tests, debug APK and normal lintDebug pass. Lint has zero errors and 48 warnings, including existing dependency/toolchain and unused-resource warnings. The Python standard-library progress SQL check passes empty history, duplicate-day choices and nonconsecutive legacy history with estimated savings retained separately.
+- Android: 83 JVM tests, debug APK and normal lintDebug pass. Lint has zero errors and 48 warnings, including existing dependency/toolchain and unused-resource warnings. The Python standard-library progress SQL check passes empty history, duplicate-day choices and nonconsecutive legacy history with estimated savings retained separately.
 - Read-only Pixel emulator: confirmed chosen-app testing opens the overlay; notification shade preserves it; Home and screen-off remove it; reopening can pause again; Continue and hardware Back each record a choice. Home showed two choices, one Go back and one active day. Monitoring details showed connection/loading/last displayed pause. Permission-loss/recovery states were inspected. No accessibility service crash appeared in these checks.
 
 ## Remaining improvements
@@ -65,3 +65,11 @@ Home now offers 15/30/60-minute snooze and Resume now. A locally saved deadline 
 Accessibility events check the deadline directly, so a timer delayed by sleep cannot keep new visits snoozed after expiry. Returning to Home also refreshes expiry immediately. Observed timers update open screens. There is no exact alarm, boot receiver, foreground service or new permission. Timer expiry permits future detected visits to pause; it does not interrupt an already open app. Device-clock changes affect the deadline.
 
 New unit tests cover supported/invalid durations, persisted restart state, expiry, early resume, replacement of an older timer, sleep-like clock jumps, failed saves/resume, retry and Home actions preserving selected apps. This pass does not include device or emulator validation of the new controls; physical-phone testing stays deferred. RELEASE.md lists the required snooze checks.
+
+## Optional intentions and personal reminder
+
+Android now offers Work, Learn, Relax and Connect alongside the original reasons, behind Add an intention (optional). Choices can be skipped, cleared or hidden; a new pause resets the selection. Existing history keys are preserved. Go back stays immediate and the configured countdown is unchanged.
+
+Home offers an optional global personal reminder, up to 140 characters. Save, edit and clear are supported; Cancel keeps the existing text. Both pause-screen entry points observe the local preference. Failed saves preserve the previous reminder and allow retry. The reminder is excluded from backup/transfer and never included in choice history or CSV exports. No schema migration or new permission is introduced.
+
+There are 83 JVM tests, including new reminder normalization/persistence/failure/clear tests and intent recording/reset tests. Debug and optimized unsigned release builds pass, with lint checks. This feature has not been checked on an emulator or physical phone; RELEASE.md adds keyboard, large-font, screen-reader and live-update checks for the deferred device session.

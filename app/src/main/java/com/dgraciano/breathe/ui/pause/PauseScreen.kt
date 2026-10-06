@@ -9,6 +9,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -31,20 +32,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.Role
-import com.dgraciano.breathe.data.model.InterventionEvent
+import com.dgraciano.breathe.data.model.pauseReasons
 import com.dgraciano.breathe.data.repository.MentalHealthTip
 import com.dgraciano.breathe.ui.components.WaveBackground
 import com.dgraciano.breathe.ui.components.rememberReducedMotion
 import com.dgraciano.breathe.ui.theme.*
 import kotlinx.coroutines.delay
 
-private val reasons = listOf(
-    InterventionEvent.REASON_BORED to "Bored",
-    InterventionEvent.REASON_HABIT to "Habit",
-    InterventionEvent.REASON_ESCAPING to "Escaping",
-    InterventionEvent.REASON_CURIOUS to "Curious"
-)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PauseScreen(
     appName: String,
@@ -52,6 +48,7 @@ fun PauseScreen(
     tip: MentalHealthTip,
     alternativeActivity: String,
     selectedReason: String?,
+    personalReminder: String = "",
     pauseSeconds: Int,
     sessionId: Int = 0,
     ready: Boolean = true,
@@ -60,6 +57,7 @@ fun PauseScreen(
     onNo: () -> Unit
 ) {
     var showContent by remember(sessionId) { mutableStateOf(false) }
+    var showReasons by remember(sessionId) { mutableStateOf(false) }
     var showTip by remember(sessionId) { mutableStateOf(false) }
     val reducedMotion = rememberReducedMotion()
 
@@ -213,35 +211,55 @@ fun PauseScreen(
                     }
                 }
 
+                if (personalReminder.isNotBlank()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = BreatheSurface.copy(alpha = 0.7f))
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Your reminder", color = BreatheSecondary, fontSize = 12.sp)
+                            Text(personalReminder, color = BreatheTextPrimary, fontSize = 16.sp)
+                        }
+                    }
+                }
+                TextButton(onClick = { showReasons = !showReasons }) {
+                    Text(
+                        if (showReasons) "Hide intentions" else selectedReason?.let { key ->
+                            "Your intention: ${pauseReasons.firstOrNull { it.key == key }?.label.orEmpty()}"
+                        } ?: "Add an intention (optional)",
+                        color = BreatheTextSecondary
+                    )
+                }
+
                 // Reason Selector
-                AnimatedVisibility(visible = showContent, enter = fadeIn(tween(1200))) {
+                AnimatedVisibility(visible = showContent && showReasons, enter = fadeIn(tween(1200))) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Why open $appName? (optional)",
+                            text = "What brings you to $appName? Tap again to clear.",
                             fontSize = 13.sp,
                             color = BreatheTextMuted,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
-                        Row(
+                        FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().selectableGroup()
                         ) {
-                            reasons.forEach { (key, label) ->
+                            pauseReasons.forEach { (key, label) ->
                                 val isSelected = selectedReason == key
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
-                                        .weight(1f)
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(if (isSelected) BreathePrimary.copy(alpha = 0.2f) else Color.Transparent)
                                         .border(1.dp, if (isSelected) BreathePrimary else BreatheDivider, RoundedCornerShape(12.dp))
                                         .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onReasonSelected(key) })
                                         .defaultMinSize(minHeight = 48.dp)
-                                        .padding(vertical = 8.dp)
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
                                     Text(
                                         text = label,
-                                        fontSize = 11.sp,
+                                        fontSize = 13.sp,
                                         color = if (isSelected) BreathePrimary else BreatheTextSecondary,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )

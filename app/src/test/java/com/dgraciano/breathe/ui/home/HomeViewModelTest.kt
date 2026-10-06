@@ -13,6 +13,7 @@ import com.dgraciano.breathe.data.repository.AppRepository
 import com.dgraciano.breathe.data.repository.StatsRepository
 import com.dgraciano.breathe.service.MonitoringStatus
 import com.dgraciano.breathe.service.SnoozeStore
+import com.dgraciano.breathe.data.repository.PausePreferences
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -46,6 +47,8 @@ class HomeViewModelTest {
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var context: Context
     private lateinit var blockedApps: MutableStateFlow<List<BlockedApp>>
+    private lateinit var pausePreferences: PausePreferences
+    private val reminder = MutableStateFlow("")
     private lateinit var snoozeStore: SnoozeStore
     private val snoozeDeadline = MutableStateFlow(0L)
     private val created = mutableListOf<HomeViewModel>()
@@ -81,6 +84,9 @@ class HomeViewModelTest {
                 mapOf("com.a" to usage(120 * 60_000L))
         }
         context = mockk(relaxed = true)
+        reminder.value = ""
+        pausePreferences = mockk(relaxed = true) { every { reminder } returns this@HomeViewModelTest.reminder }
+
         snoozeDeadline.value = 0L
         snoozeStore = mockk(relaxed = true) {
             every { deadline } returns snoozeDeadline
@@ -96,7 +102,7 @@ class HomeViewModelTest {
     }
 
     private fun viewModel() =
-        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context, testDispatcher, MonitoringStatus(), snoozeStore).also { created.add(it) }
+        HomeViewModel(repo, statsRepo, achievementRepo, usageStatsManager, context, testDispatcher, MonitoringStatus(), snoozeStore, pausePreferences).also { created.add(it) }
 
     @Test
     fun `blocked apps are paired with their usage minutes`() = runTest {
@@ -178,5 +184,21 @@ class HomeViewModelTest {
         vm.snooze(15).join()
         assertNull(vm.snoozeError.value)
         assertEquals(901_000L, vm.snoozedUntil.value)
+    }
+
+    @Test
+    fun `reminder save failure retains its text and successful retry clears the error`() = runTest {
+        reminder.value = "A short walk"
+        val vm = viewModel()
+        coEvery { pausePreferences.saveReminder(any()) } throws java.io.IOException("full disk")
+        assertEquals(false, vm.saveReminder("Read a chapter"))
+        assertEquals("A short walk", vm.personalReminder.value)
+        assertNotNull(vm.reminderError.value)
+        assertEquals(false, vm.reminderSaving.value)
+        coEvery { pausePreferences.saveReminder(any()) } answers { reminder.value = firstArg() }
+        assertEquals(true, vm.saveReminder("Read a chapter"))
+        assertEquals("Read a chapter", vm.personalReminder.value)
+        assertNull(vm.reminderError.value)
+        coVerify(exactly = 0) { repo.unblockApp(any()) }
     }
 }
